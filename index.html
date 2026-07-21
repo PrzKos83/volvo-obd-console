@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Volvo OBD Console (XC70 P3) v0.4.9</title>
+<title>Volvo OBD Console (XC70 P3) v0.5.1</title>
 <style>
   :root{
     --bg:#0d1117;--panel:#161b22;--line:#30363d;--txt:#e6edf3;--dim:#8b949e;
@@ -62,7 +62,7 @@
 </head>
 <body>
 <header>
-  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.4.9</span></h1>
+  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.5.1</span></h1>
   <span id="st" class="status">rozłączony</span>
   <span id="dev" class="status" style="display:none"></span>
   <span id="logstate" class="status" style="display:none"></span>
@@ -94,12 +94,20 @@
     <button class="macro" data-macro="F" disabled>F · PIDs</button>
   </div>
   <div class="bar" style="border:0;padding-left:0">
-    <small>KANDYDACI Volvo A6 — ⚠ P1/adres 7A (ZŁA platforma dla XC70), tylko TEST czy schemat A6 w ogóle odpowiada.
-      Realne P3 misfire/VVT wklej z arkusza RU. Klik = wpisze payload → potem makro C.</small>
-    <button class="mini" data-a6="CD 7A A6 10 1D 01 00 00">RPM (10 1D)</button>
-    <button class="mini" data-a6="CD 7A A6 10 DD 01 00 00">Coolant (10 DD)</button>
-    <button class="mini" data-a6="CD 7A A6 10 CA 01 00 00">Misfire agg. (10 CA)</button>
-    <button class="mini" data-a6="CD 7A A6 11 CE 01 00 00">VVT duty (11 CE)</button>
+    <small>🎯 Volvo DID (UDS 22 @ 7E0) — POTWIERDZONY transport z logu Car Scanner. Wpisz DID (4 hex) → Czytaj.
+      Dekod: hex + float32 (Volvo P3 = IEEE754) + int. Potwierdzone: D91C=RPM, D9C1=rail.</small>
+    <input type="text" id="didin" placeholder="np. D91C" style="background:var(--bg);color:var(--txt);border:1px solid var(--line);border-radius:4px;padding:4px 6px;font-family:var(--mono);font-size:12px;width:90px">
+    <button class="live" id="btnDid">Czytaj DID</button>
+    <span style="width:100%;height:0"></span>
+    <button class="mini" data-did="D91C">D91C RPM</button>
+    <button class="mini" data-did="D9C1">D9C1 rail</button>
+    <button class="mini" data-did="DA03">DA03</button>
+    <button class="mini" data-did="DA04">DA04</button>
+    <button class="mini" data-did="DAB6">DAB6</button>
+  </div>
+  <div class="bar" style="border:0;padding-left:0">
+    <small>🧭 Sensory P3 (potwierdzone z arkusza, właściwe równania+header). Klik = odczyt na aucie. ⚠ misfire per-cyl NIE MA w arkuszu.</small>
+    <div id="p3sensors" style="display:flex;gap:6px;flex-wrap:wrap;width:100%"></div>
   </div>
 </details>
 
@@ -147,7 +155,7 @@
 const $ = s => document.querySelector(s);
 const logEl=$('#log'), verdictEl=$('#verdict'), liveBox=$('#livebox');
 const enc=new TextEncoder(), dec=new TextDecoder();
-const APP_VERSION='0.4.9', CHUNK=20, DOM_MAX=500;
+const APP_VERSION='0.5.1', CHUNK=20, DOM_MAX=500;
 const T_DEFAULT=3500, T_ATZ=4000, T_POLL=1600;   // dłuższe timeouty (fix STOPPED/TIMEOUT)
 
 // ---- BLE ----
@@ -632,18 +640,18 @@ function setFuel(m){ fuelMark=m;
   $('#fuelchip').className='status'+(m?' on':'');
   sys('⛽ znacznik paliwa (ręczny): '+(m||'wyczyszczony'));
   idbPut('exchange',{session:sessionId,seq:++seq,lvl:'FUEL_MARK',ts_mono:mono(),ts_wall:wall(),text:(m||'clear')}); }
-// v0.4.9: auto-detekcja paliwa z ciśnienia USUNIĘTA (na tym aucie pompa benzyny nie gaśnie na LPG,
+// v0.5.1: auto-detekcja paliwa z ciśnienia USUNIĘTA (na tym aucie pompa benzyny nie gaśnie na LPG,
 // rail ~380 kPa na obu paliwach). Paliwo = wyłącznie ręczny znacznik ⛽/🔵. Rail pokazywany informacyjnie.
 function fuelLabel(){ return fuelMark ? fuelMark+' (ręczny)' : '— (kliknij ⛽/🔵)'; }
 
-/* ---------------- MONITOR LIVE (D) v0.4.9 — ATCRA 7E8 + multi-PID w JEDNEJ ramce (≤6 bajtów) ---------------- */
+/* ---------------- MONITOR LIVE (D) v0.5.1 — ATCRA 7E8 + multi-PID w JEDNEJ ramce (≤6 bajtów) ---------------- */
 // każda grupa mieści się w pojedynczej ramce CAN → brak wieloramkowego ISO-TP → parser działa zawsze
 const MON_GROUPS=[['0C','04'], ['05','0B'], ['06','07'], ['34'], ['0A']];  // RPM+load, ECT+MAP, STFT+LTFT, λ, rail
 async function toggleMonitor(){
   if(monitoring){ monitoring=false; return; }            // STOP
   if(!connected||macroRunning) return;
   monitoring=true; refreshControls(); liveBox.classList.add('show');
-  sys('▶ MONITOR live v0.4.9 — filtr ECM (ATCRA 7E8) + multi-PID. Blip gazu → patrz λ. Znacznik paliwa ręcznie ⛽/🔵. STOP by zakończyć.');
+  sys('▶ MONITOR live v0.5.1 — filtr ECM (ATCRA 7E8) + multi-PID. Blip gazu → patrz λ. Znacznik paliwa ręcznie ⛽/🔵. STOP by zakończyć.');
   // setup jednorazowy + FILTR tylko na ECM (usuwa bleed 7E9 z sesji 21.07)
   for(const c of ['ATE0','ATS1','ATH1','ATCAF1','ATSP6','ATCRA 7E8']){ if(!monitoring) break; await enqueue(c,T_DEFAULT); await new Promise(r=>setTimeout(r,120)); }
   let cyc=0;
@@ -664,6 +672,76 @@ async function toggleMonitor(){
   try{ if(writeChar){ await enqueue('ATH1', T_DEFAULT); await enqueue('ATCRA', T_DEFAULT); } }catch(e){}
   monitoring=false; refreshControls();
   sys('■ MONITOR zatrzymany (filtr ECM zdjęty).');
+}
+
+/* ---------------- Volvo DID reader (UDS 22 @ 7E0) — potwierdzony transport ---------------- */
+function f32be(b){ const dv=new DataView(new ArrayBuffer(4)); for(let i=0;i<4;i++) dv.setUint8(i, b[i]||0); return dv.getFloat32(0,false); }
+async function readDid(didRaw){
+  if(!connected||macroRunning||monitoring){ errline('DID: wymaga połączenia, nie w trakcie monitora/makra'); return; }
+  const did=(didRaw||'').toUpperCase().replace(/[^0-9A-F]/g,'');
+  if(!/^[0-9A-F]{4}$/.test(did)){ errline('DID = 4 znaki hex, np. D91C'); return; }
+  macroRunning=true; refreshControls(); sys('▶ Volvo DID 22 '+did+' @ 7E0');
+  // ATH0 = nagłówki off → CAF1 skleja czysto "62 DID data"; ATSH 7E0 = fizyczna adresacja ECM
+  for(const c of ['ATE0','ATS1','ATH0','ATCAF1','ATSP6','ATSH 7E0']){ if(writeChar) await enqueue(c,T_DEFAULT); await new Promise(r=>setTimeout(r,120)); }
+  const res=await enqueue('22'+did, T_DEFAULT);
+  if(writeChar){ await enqueue('ATH1',T_DEFAULT); }         // przywróć nagłówki
+  const u=(res.text||'').toUpperCase().replace(/[^0-9A-F]/g,'');
+  const key='62'+did;
+  let v;
+  if(u.includes('7F22')){ v=V('INCONCLUSIVE','DID '+did+': negative response 7F 22 (NRC '+(u.slice(u.indexOf('7F22')+4,u.indexOf('7F22')+6))+') — nieobsługiwany/warunki.', res.text.trim()); }
+  else if(u.includes(key)){
+    const hex=u.slice(u.indexOf(key)+6);
+    const bytes=hex.match(/.{2}/g)?.map(x=>parseInt(x,16))||[];
+    let dec='';
+    if(bytes.length>=4) dec+=' float32='+f32be(bytes).toFixed(3);
+    if(bytes.length>=2) dec+='  int16='+((bytes[0]<<8)|bytes[1]);
+    if(bytes.length>=1) dec+='  int8='+bytes[0];
+    if(bytes.length>=8) dec+='  |6×float?='+[0,4,8].map(o=>bytes.length>=o+4?f32be(bytes.slice(o,o+4)).toFixed(1):'').filter(Boolean).join(',');
+    v=V('INFO','DID '+did+' OK — dane po 62 '+did+':', 'hex='+(hex.match(/.{2}/g)||[]).join(' ')+dec);
+  } else {
+    v=V('INCONCLUSIVE','DID '+did+': brak "62 '+did+'" w odpowiedzi ('+res.status+').', res.text.trim());
+  }
+  renderVerdict('DID '+did, v, [res]);
+  macroRunning=false; refreshControls();
+}
+
+/* ---------------- Sensory P3 (potwierdzone z arkusza, header+równanie) ---------------- */
+const SG=b=>b>127?b-256:b;  // signed byte
+const P3_SENSORS=[
+  {n:'Oil Temp',    did:'D9DC', h:'7E0', u:'°C',   d:b=>(SG(b[0])*256+b[1])/10-273},
+  {n:'Exhaust T2',  did:'D9F9', h:'7E0', u:'°C',   d:b=>(SG(b[0])*256+b[1])/10-273},
+  {n:'Air flow',    did:'D916', h:'7E0', u:'mg/s', d:b=>(b[0]*256+b[1])/10},
+  {n:'Fuel Temp',   did:'D99C', h:'7E0', u:'°C',   d:b=>(SG(b[0])*256+b[1])/10-273},
+  {n:'Fan',         did:'DC02', h:'7E0', u:'%',    d:b=>(256*b[0]+b[1])/100},
+  {n:'A/C Press',   did:'D900', h:'7E0', u:'bar',  d:b=>(b[0]*256+b[1])/1000},
+  {n:'Ash',         did:'D9F2', h:'7E0', u:'g',    d:b=>(b[0]*256+b[1])/100},
+  {n:'Batt Charge', did:'D924', h:'7E0', u:'A',    d:b=>(b[0]*256+b[1])/100},
+  {n:'Eng Torque',  did:'DD8D', h:'7E1', u:'Nm',   d:b=>(SG(b[0])*256+b[1])/10},
+  {n:'Gear',        did:'DD81', h:'7E1', u:'',     d:b=>b[1]},
+  {n:'Haldex Torq', did:'D930', h:'795', u:'Nm',   d:b=>b[0]*256+b[1]},
+  {n:'Haldex Curr', did:'1945', h:'795', u:'mA',   d:b=>b[0]*256+b[1]},
+];
+async function readSensor(s){
+  if(!connected||macroRunning||monitoring){ errline('sensor: wymaga połączenia, nie w monitorze/makrze'); return; }
+  macroRunning=true; refreshControls(); sys('▶ '+s.n+' — 22 '+s.did+' @ '+s.h);
+  for(const c of ['ATE0','ATS1','ATH0','ATCAF1','ATSP6','ATSH '+s.h]){ if(writeChar) await enqueue(c,T_DEFAULT); await new Promise(r=>setTimeout(r,120)); }
+  const res=await enqueue('22'+s.did, T_DEFAULT);
+  if(writeChar){ await enqueue('ATH1',T_DEFAULT); await enqueue('ATSH 7E0',T_DEFAULT); }
+  const u=(res.text||'').toUpperCase().replace(/[^0-9A-F]/g,''); const key='62'+s.did;
+  let v;
+  if(u.includes('7F22')) v=V('INCONCLUSIVE', s.n+': negative 7F 22 — nieobsługiwany na tym aucie / złe warunki.', res.text.trim());
+  else if(u.includes(key)){
+    const hex=u.slice(u.indexOf(key)+6); const b=(hex.match(/.{2}/g)||[]).map(x=>parseInt(x,16));
+    let val=null; try{ val=s.d(b); }catch(e){}
+    v=V('INFO', s.n+' = '+(val!=null?(Math.round(val*100)/100):'?')+' '+s.u, 'DID 22 '+s.did+' @ '+s.h+'  hex='+(hex.match(/.{2}/g)||[]).join(' '));
+  } else v=V('INCONCLUSIVE', s.n+': brak 62 '+s.did+' ('+res.status+')', res.text.trim());
+  renderVerdict(s.n, v, [res]);
+  macroRunning=false; refreshControls();
+}
+function buildP3Buttons(){
+  const box=$('#p3sensors'); if(!box) return;
+  P3_SENSORS.forEach((s,i)=>{ const b=document.createElement('button'); b.className='mini'; b.textContent=s.n;
+    b.style.cssText='font-size:12px;border:1px solid var(--line);border-radius:6px;padding:6px 8px'; b.onclick=()=>readSensor(s); box.appendChild(b); });
 }
 
 /* ---------------- sesje + eksport ---------------- */
@@ -727,10 +805,10 @@ $('#btnMon').onclick=()=>toggleMonitor();
 $('#btnFuelP').onclick=()=>setFuel('BENZYNA');
 $('#btnFuelG').onclick=()=>setFuel('LPG');
 $('#btnFuelClr').onclick=()=>setFuel(null);
-document.querySelectorAll('button[data-a6]').forEach(b=>b.onclick=()=>{
-  $('#req29').value=b.dataset.a6;
-  sys('⚠ Wpisano kandydata A6 (P1/adres 7A — ZŁA platforma dla XC70): '+b.dataset.a6+'. Kliknij makro C. Jeśli brak odpowiedzi = adres/PID nie dla P3. Realne P3 → arkusz RU.');
-});
+buildP3Buttons();
+$('#btnDid').onclick=()=>readDid($('#didin').value);
+$('#didin').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); readDid($('#didin').value); }});
+document.querySelectorAll('button[data-did]').forEach(b=>b.onclick=()=>{ $('#didin').value=b.dataset.did; readDid(b.dataset.did); });
 $('#btnClear').onclick=()=>{ logEl.innerHTML=''; };
 $('#dlLog').onclick=e=>{ e.preventDefault(); exportCsv(); };
 $('#btnNewSess').onclick=()=>newSession();
