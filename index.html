@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Volvo OBD Console (XC70 P3) v0.4.6</title>
+<title>Volvo OBD Console (XC70 P3) v0.4.7</title>
 <style>
   :root{
     --bg:#0d1117;--panel:#161b22;--line:#30363d;--txt:#e6edf3;--dim:#8b949e;
@@ -62,7 +62,7 @@
 </head>
 <body>
 <header>
-  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.4.6</span></h1>
+  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.4.7</span></h1>
   <span id="st" class="status">rozłączony</span>
   <span id="dev" class="status" style="display:none"></span>
   <span id="logstate" class="status" style="display:none"></span>
@@ -139,7 +139,7 @@
 const $ = s => document.querySelector(s);
 const logEl=$('#log'), verdictEl=$('#verdict'), liveBox=$('#livebox');
 const enc=new TextEncoder(), dec=new TextDecoder();
-const APP_VERSION='0.4.6', CHUNK=20, DOM_MAX=500;
+const APP_VERSION='0.4.7', CHUNK=20, DOM_MAX=500;
 const T_DEFAULT=3500, T_ATZ=4000, T_POLL=1600;   // dłuższe timeouty (fix STOPPED/TIMEOUT)
 
 // ---- BLE ----
@@ -180,7 +180,7 @@ function idbPut(store,obj){
   }catch(e){ flagLogError(); settle(false); }
   done.then(()=>pendingWrites.delete(done)); return done;
 }
-async function flushWrites(){ while(pendingWrites.size) await Promise.all([...pendingWrites]); }
+async function flushWrites(){ let i=0; while(pendingWrites.size && i++<50) await Promise.all([...pendingWrites]); }
 function flagLogError(){ logErrors++; if(!logDegraded && logErrors>=3){ logDegraded=true;
   setLogState('LOG_DEGRADED','warn'); errline('⚠ IndexedDB: utrata zapisu (quota/tx). Log może być niepełny.'); } }
 async function idbAllBySession(store,sid){return new Promise(res=>{
@@ -331,6 +331,7 @@ function decodeDtcs(text,posByte){ // 43/47 followed by DTC pairs
 /* ---------------- kolejka ---------------- */
 let queue=[], inflight=null, rxBuf='', promptTimer=null;
 function enqueue(cmd,timeoutMs=T_DEFAULT){return new Promise(resolve=>{
+  if(!writeChar){ resolve({cmd,text:'',status:'DISCONNECTED'}); return; }  // nie zawieszaj kolejki po rozłączeniu
   queue.push({cmd,timeoutMs,resolve,session:sessionId}); pump(); refreshControls();
 });}
 async function pump(){
@@ -623,11 +624,11 @@ function setFuel(m){ fuelMark=m;
   $('#fuelchip').className='status'+(m?' on':'');
   sys('⛽ znacznik paliwa (ręczny): '+(m||'wyczyszczony'));
   idbPut('exchange',{session:sessionId,seq:++seq,lvl:'FUEL_MARK',ts_mono:mono(),ts_wall:wall(),text:(m||'clear')}); }
-// v0.4.6: auto-detekcja paliwa z ciśnienia USUNIĘTA (na tym aucie pompa benzyny nie gaśnie na LPG,
+// v0.4.7: auto-detekcja paliwa z ciśnienia USUNIĘTA (na tym aucie pompa benzyny nie gaśnie na LPG,
 // rail ~380 kPa na obu paliwach). Paliwo = wyłącznie ręczny znacznik ⛽/🔵. Rail pokazywany informacyjnie.
 function fuelLabel(){ return fuelMark ? fuelMark+' (ręczny)' : '— (kliknij ⛽/🔵)'; }
 
-/* ---------------- MONITOR LIVE (D) v0.4.6 — ATCRA 7E8 (bez bleedu 7E9) + MULTI-PID (szybko) ---------------- */
+/* ---------------- MONITOR LIVE (D) v0.4.7 — ATCRA 7E8 (bez bleedu 7E9) + MULTI-PID (szybko) ---------------- */
 // grupy multi-PID (≤6 PID / żądanie): g1 = RPM/load/ECT/MAP/STFT/LTFT ; g2 = λ + rail(0A)
 const MON_G1=['0C','04','05','0B','06','07'];
 const MON_G2=['34','0A'];
@@ -635,7 +636,7 @@ async function toggleMonitor(){
   if(monitoring){ monitoring=false; return; }            // STOP
   if(!connected||macroRunning) return;
   monitoring=true; refreshControls(); liveBox.classList.add('show');
-  sys('▶ MONITOR live v0.4.6 — filtr ECM (ATCRA 7E8) + multi-PID. Blip gazu → patrz λ. Znacznik paliwa ręcznie ⛽/🔵. STOP by zakończyć.');
+  sys('▶ MONITOR live v0.4.7 — filtr ECM (ATCRA 7E8) + multi-PID. Blip gazu → patrz λ. Znacznik paliwa ręcznie ⛽/🔵. STOP by zakończyć.');
   // setup jednorazowy + FILTR tylko na ECM (usuwa bleed 7E9 z sesji 21.07)
   for(const c of ['ATE0','ATS1','ATH1','ATCAF1','ATSP6','ATCRA 7E8']){ if(!monitoring) break; await enqueue(c,T_DEFAULT); await new Promise(r=>setTimeout(r,120)); }
   let cyc=0;
@@ -653,8 +654,8 @@ async function toggleMonitor(){
       +`rail=${railD?railD.s+'kPa':'—'}  ⛽${fuelLabel()}`;
     liveBox.textContent=line; monline(line);
   }
-  // przywróć brak filtra, żeby inne funkcje/ręczne komendy widziały wszystkie ECU
-  try{ await enqueue('ATCRA', T_DEFAULT); }catch(e){}
+  // przywróć brak filtra, żeby inne funkcje/ręczne komendy widziały wszystkie ECU (tylko gdy nadal połączony)
+  try{ if(writeChar) await enqueue('ATCRA', T_DEFAULT); }catch(e){}
   monitoring=false; refreshControls();
   sys('■ MONITOR zatrzymany (filtr ECM zdjęty).');
 }
@@ -665,8 +666,8 @@ function newSession(){ if(busy()){ errline('nie można zmienić sesji — trwa o
   $('#sesslabel').textContent='sesja: '+sessionId.slice(0,8); $('#logstate').style.display='none';
   sys('── nowa sesja '+sessionId+' ──'); refreshControls(); }
 async function exportCsv(){
-  if(busy()){ errline('eksport dostępny po zakończeniu operacji'); return; }
-  await flushWrites();
+  if(macroRunning||autoRunning){ errline('eksport po zakończeniu sekwencji auto/makra'); return; }
+  await flushWrites();   // snapshot — działa też w trakcie monitora i po Stop
   const chunks=await idbAllBySession('chunk',sessionId); const exch=await idbAllBySession('exchange',sessionId);
   const rows=[];
   chunks.forEach(c=>rows.push({seq:c.seq,rec:['transport_chunk',c.seq,Math.round(c.ts_mono||0),c.ts_wall||'',c.dir||'',c.exchange_id??'',(c.text||'').replace(/\r/g,'\\r')+' | '+(c.bytes_hex||''),'']}));
