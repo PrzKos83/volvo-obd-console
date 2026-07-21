@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Volvo OBD Console (XC70 P3) v0.4.7</title>
+<title>Volvo OBD Console (XC70 P3) v0.4.9</title>
 <style>
   :root{
     --bg:#0d1117;--panel:#161b22;--line:#30363d;--txt:#e6edf3;--dim:#8b949e;
@@ -62,7 +62,7 @@
 </head>
 <body>
 <header>
-  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.4.7</span></h1>
+  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.4.9</span></h1>
   <span id="st" class="status">rozłączony</span>
   <span id="dev" class="status" style="display:none"></span>
   <span id="logstate" class="status" style="display:none"></span>
@@ -92,6 +92,14 @@
     <button class="live" id="btnMon" disabled>D · Monitor ▶</button>
     <button class="macro" data-macro="E" disabled>E · DTC/06</button>
     <button class="macro" data-macro="F" disabled>F · PIDs</button>
+  </div>
+  <div class="bar" style="border:0;padding-left:0">
+    <small>KANDYDACI Volvo A6 — ⚠ P1/adres 7A (ZŁA platforma dla XC70), tylko TEST czy schemat A6 w ogóle odpowiada.
+      Realne P3 misfire/VVT wklej z arkusza RU. Klik = wpisze payload → potem makro C.</small>
+    <button class="mini" data-a6="CD 7A A6 10 1D 01 00 00">RPM (10 1D)</button>
+    <button class="mini" data-a6="CD 7A A6 10 DD 01 00 00">Coolant (10 DD)</button>
+    <button class="mini" data-a6="CD 7A A6 10 CA 01 00 00">Misfire agg. (10 CA)</button>
+    <button class="mini" data-a6="CD 7A A6 11 CE 01 00 00">VVT duty (11 CE)</button>
   </div>
 </details>
 
@@ -139,7 +147,7 @@
 const $ = s => document.querySelector(s);
 const logEl=$('#log'), verdictEl=$('#verdict'), liveBox=$('#livebox');
 const enc=new TextEncoder(), dec=new TextDecoder();
-const APP_VERSION='0.4.7', CHUNK=20, DOM_MAX=500;
+const APP_VERSION='0.4.9', CHUNK=20, DOM_MAX=500;
 const T_DEFAULT=3500, T_ATZ=4000, T_POLL=1600;   // dłuższe timeouty (fix STOPPED/TIMEOUT)
 
 // ---- BLE ----
@@ -624,38 +632,36 @@ function setFuel(m){ fuelMark=m;
   $('#fuelchip').className='status'+(m?' on':'');
   sys('⛽ znacznik paliwa (ręczny): '+(m||'wyczyszczony'));
   idbPut('exchange',{session:sessionId,seq:++seq,lvl:'FUEL_MARK',ts_mono:mono(),ts_wall:wall(),text:(m||'clear')}); }
-// v0.4.7: auto-detekcja paliwa z ciśnienia USUNIĘTA (na tym aucie pompa benzyny nie gaśnie na LPG,
+// v0.4.9: auto-detekcja paliwa z ciśnienia USUNIĘTA (na tym aucie pompa benzyny nie gaśnie na LPG,
 // rail ~380 kPa na obu paliwach). Paliwo = wyłącznie ręczny znacznik ⛽/🔵. Rail pokazywany informacyjnie.
 function fuelLabel(){ return fuelMark ? fuelMark+' (ręczny)' : '— (kliknij ⛽/🔵)'; }
 
-/* ---------------- MONITOR LIVE (D) v0.4.7 — ATCRA 7E8 (bez bleedu 7E9) + MULTI-PID (szybko) ---------------- */
-// grupy multi-PID (≤6 PID / żądanie): g1 = RPM/load/ECT/MAP/STFT/LTFT ; g2 = λ + rail(0A)
-const MON_G1=['0C','04','05','0B','06','07'];
-const MON_G2=['34','0A'];
+/* ---------------- MONITOR LIVE (D) v0.4.9 — ATCRA 7E8 + multi-PID w JEDNEJ ramce (≤6 bajtów) ---------------- */
+// każda grupa mieści się w pojedynczej ramce CAN → brak wieloramkowego ISO-TP → parser działa zawsze
+const MON_GROUPS=[['0C','04'], ['05','0B'], ['06','07'], ['34'], ['0A']];  // RPM+load, ECT+MAP, STFT+LTFT, λ, rail
 async function toggleMonitor(){
   if(monitoring){ monitoring=false; return; }            // STOP
   if(!connected||macroRunning) return;
   monitoring=true; refreshControls(); liveBox.classList.add('show');
-  sys('▶ MONITOR live v0.4.7 — filtr ECM (ATCRA 7E8) + multi-PID. Blip gazu → patrz λ. Znacznik paliwa ręcznie ⛽/🔵. STOP by zakończyć.');
+  sys('▶ MONITOR live v0.4.9 — filtr ECM (ATCRA 7E8) + multi-PID. Blip gazu → patrz λ. Znacznik paliwa ręcznie ⛽/🔵. STOP by zakończyć.');
   // setup jednorazowy + FILTR tylko na ECM (usuwa bleed 7E9 z sesji 21.07)
   for(const c of ['ATE0','ATS1','ATH1','ATCAF1','ATSP6','ATCRA 7E8']){ if(!monitoring) break; await enqueue(c,T_DEFAULT); await new Promise(r=>setTimeout(r,120)); }
   let cyc=0;
   while(monitoring && connected){
-    const res1=await enqueue('01'+MON_G1.join(''), T_POLL);
-    if(!monitoring) break;
-    const res2=await enqueue('01'+MON_G2.join(''), T_POLL);
-    const m1=parseMulti(res1.text), m2=parseMulti(res2.text);
-    const g=(pid,src)=>{ const d=decodeBytes(pid, src[pid]); return d?d.s:'—'; };
-    const railD=decodeBytes('0A',m2['0A']);
+    const vals={};
+    for(const grp of MON_GROUPS){ if(!monitoring) break;
+      const res=await enqueue('01'+grp.join(''), T_POLL); Object.assign(vals, parseMulti(res.text)); }
+    const g=(pid)=>{ const d=decodeBytes(pid, vals[pid]); return d?d.s:'—'; };
+    const railD=decodeBytes('0A', vals['0A']);
     cyc++;
-    const line=`#${cyc}  RPM=${g('0C',m1)}  λ=${g('34',m2)}  `
-      +`STFT=${g('06',m1)}%  LTFT=${g('07',m1)}%  `
-      +`MAP=${g('0B',m1)}kPa  load=${g('04',m1)}%  ECT=${g('05',m1)}°C  `
+    const line=`#${cyc}  RPM=${g('0C')}  λ=${g('34')}  `
+      +`STFT=${g('06')}%  LTFT=${g('07')}%  `
+      +`MAP=${g('0B')}kPa  load=${g('04')}%  ECT=${g('05')}°C  `
       +`rail=${railD?railD.s+'kPa':'—'}  ⛽${fuelLabel()}`;
     liveBox.textContent=line; monline(line);
   }
-  // przywróć brak filtra, żeby inne funkcje/ręczne komendy widziały wszystkie ECU (tylko gdy nadal połączony)
-  try{ if(writeChar) await enqueue('ATCRA', T_DEFAULT); }catch(e){}
+  // przywróć nagłówki + brak filtra dla innych funkcji/ręcznych komend (tylko gdy nadal połączony)
+  try{ if(writeChar){ await enqueue('ATH1', T_DEFAULT); await enqueue('ATCRA', T_DEFAULT); } }catch(e){}
   monitoring=false; refreshControls();
   sys('■ MONITOR zatrzymany (filtr ECM zdjęty).');
 }
@@ -721,6 +727,10 @@ $('#btnMon').onclick=()=>toggleMonitor();
 $('#btnFuelP').onclick=()=>setFuel('BENZYNA');
 $('#btnFuelG').onclick=()=>setFuel('LPG');
 $('#btnFuelClr').onclick=()=>setFuel(null);
+document.querySelectorAll('button[data-a6]').forEach(b=>b.onclick=()=>{
+  $('#req29').value=b.dataset.a6;
+  sys('⚠ Wpisano kandydata A6 (P1/adres 7A — ZŁA platforma dla XC70): '+b.dataset.a6+'. Kliknij makro C. Jeśli brak odpowiedzi = adres/PID nie dla P3. Realne P3 → arkusz RU.');
+});
 $('#btnClear').onclick=()=>{ logEl.innerHTML=''; };
 $('#dlLog').onclick=e=>{ e.preventDefault(); exportCsv(); };
 $('#btnNewSess').onclick=()=>newSession();
