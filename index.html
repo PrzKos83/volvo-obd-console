@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Volvo OBD Console (XC70 P3) v0.4.2</title>
+<title>Volvo OBD Console (XC70 P3) v0.4.4</title>
 <style>
   :root{
     --bg:#0d1117;--panel:#161b22;--line:#30363d;--txt:#e6edf3;--dim:#8b949e;
-    --acc:#2f81f7;--ok:#3fb950;--err:#f85149;--warn:#d29922;--tx:#58a6ff;--rx:#7ee787;--inc:#d29922;
+    --acc:#2f81f7;--ok:#3fb950;--err:#f85149;--warn:#d29922;--tx:#58a6ff;--rx:#7ee787;--inc:#d29922;--mon:#d2a8ff;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
@@ -26,6 +26,8 @@
   button:active{background:#21262d}
   button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
   button.macro{background:#1c2431;border-color:#2b3a52;color:var(--tx)}
+  button.live{background:#221a2e;border-color:#3d2b52;color:var(--mon)}
+  button.live.running{background:#3d2b52;color:#fff}
   button:disabled{opacity:.35}
   .bar{display:flex;gap:6px;padding:8px 12px;flex-wrap:wrap;background:var(--panel);border-bottom:1px solid var(--line)}
   .bar small{width:100%;color:var(--dim);font-size:11px;margin-bottom:2px}
@@ -34,13 +36,18 @@
   #verdict .v.PASS{border-color:var(--ok);background:#0f2417}
   #verdict .v.FAIL{border-color:var(--err);background:#2a1414}
   #verdict .v.INCONCLUSIVE{border-color:var(--inc);background:#2a2413}
+  #verdict .v.INFO{border-color:var(--acc);background:#0f1b2e}
   #verdict .v b{font-size:14px}
+  #live{padding:0 12px}
+  #live .box{display:none;margin:8px 0;padding:10px 12px;border-radius:8px;border:1px solid #3d2b52;background:#160f1f;
+    font-family:var(--mono);font-size:13px;color:var(--mon);white-space:pre-wrap}
+  #live .box.show{display:block}
   #log{flex:1;overflow-y:auto;padding:10px 12px;font-family:var(--mono);font-size:12.5px;
     line-height:1.5;white-space:pre-wrap;word-break:break-word}
   .l{display:block}
   .l .t{color:var(--dim)}
   .l.tx .d{color:var(--tx)} .l.rx .d{color:var(--rx)} .l.resp .d{color:#c9d1d9}
-  .l.sys .d{color:var(--warn)} .l.er .d{color:var(--err)}
+  .l.sys .d{color:var(--warn)} .l.er .d{color:var(--err)} .l.mon .d{color:var(--mon)}
   footer{display:flex;gap:6px;padding:8px 12px;background:var(--panel);border-top:1px solid var(--line)}
   #cmd{flex:1;background:var(--bg);color:var(--txt);border:1px solid var(--line);
     border-radius:6px;padding:10px;font-family:var(--mono);font-size:14px}
@@ -55,7 +62,7 @@
 </head>
 <body>
 <header>
-  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.4.2</span></h1>
+  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.4.4</span></h1>
   <span id="st" class="status">rozłączony</span>
   <span id="dev" class="status" style="display:none"></span>
   <span id="logstate" class="status" style="display:none"></span>
@@ -64,14 +71,28 @@
 </header>
 
 <div class="bar">
-  <small>MAKRA — aktywne po połączeniu; każde kończy się werdyktem PASS / FAIL / INCONCLUSIVE</small>
+  <small>DIAGNOSTYKA 29-bit — A→B→C. Werdykt PASS / FAIL / INCONCLUSIVE</small>
   <button class="macro" data-macro="A" disabled>A · Setup</button>
   <button class="macro" data-macro="B" disabled>B · Test 11-bit</button>
   <button class="macro" data-macro="C" disabled>C · Test 29-bit ⭐</button>
   <button class="macro" data-macro="X" disabled>Cross-check</button>
   <button class="macro" data-macro="Z" disabled>Cleanup</button>
 </div>
+<div class="bar">
+  <small>DIAGNOSTYKA SILNIKA (standard OBD, działa już teraz)</small>
+  <button class="live" id="btnMon" disabled>D · Monitor live (lambda/trymy) ▶</button>
+  <button class="macro" data-macro="E" disabled>E · DTC + Mode06</button>
+  <button class="macro" data-macro="F" disabled>F · Supported PIDs</button>
+</div>
+<div class="bar">
+  <small>ZNACZNIK PALIWA — ground-truth do kalibracji auto-detekcji (kliknij w chwili przełączenia)</small>
+  <span id="fuelchip" class="status">paliwo: —</span>
+  <button class="mini" id="btnFuelP">⛽ oznacz Benzyna</button>
+  <button class="mini" id="btnFuelG">🔵 oznacz LPG</button>
+  <button class="mini" id="btnFuelClr">✖ wyczyść</button>
+</div>
 
+<div id="live"><div class="box" id="livebox"></div></div>
 <div id="verdict"></div>
 
 <div class="toggles">
@@ -100,27 +121,23 @@
 <script>
 "use strict";
 /* ============================================================================
-   Volvo XC70 P3 — Web Bluetooth ELM327 console  v0.4.2
-   Poprawki po audytach v0.3–v0.4.2:
-   1 session UUID + eksport jednej sesji  2 TX i RX jako transport_chunk
-   3 wspólny sequence number  4 stan adaptera zatwierdzany po OK
-   5 reset stanu po ATZ/ATD/reconnect  6 NEGATIVE_RESPONSE + dekod NRC
-   7 makra wyłączone bez połączenia  8 evaluatory odporne na puste wyniki
-   9 cleanup bez bezwarunkowego PASS  10 makra atomowe (blokada ręcznego wysyłania)
-   11 parser nagłówka 11/29-bit ze spacjami i bez  12 status AT_COMMAND_SUPPORTED
-      != potwierdzenie transmisji CAN (rozdzielone werdykty 29-bit)
-   13 walidacja 8 bajtów + allowlist serwisu (A6/AE) przed requestem Volvo
-   14 reset filtrów przed discovery 29-bit; PASS wymaga korelacji request-response
-   15 profile znanych adapterów BLE + fallback heurystyczny (oznaczony)
-   16 obsługa błędów/quota IndexedDB (LOG_DEGRADED) + flush przed eksportem
-   17 exchange domykany przy disconnect  18 bezpieczne usuwanie sesji
-   Web Bluetooth nie udostępnia MTU → chunk=CHUNK. Zegar monotoniczny + UTC.
+   Volvo XC70 P3 — Web Bluetooth ELM327 console  v0.4.3
+   Bazuje na v0.4.2 (audyty 1-6) + z sesji na aucie 21.07:
+   A) profil "IOS-Vlink" (svc e7810a71, jedna charakterystyka write=notify) — nie heurystyka
+      + dłuższe timeouty i settle po ATSP (znika STOPPED/TIMEOUT z makra C)
+   B) MONITOR LIVE (D): dekodowane RPM/lambda/STFT/LTFT/MAP/load/ECT — pętla ze STOP,
+      pod test reakcji sondy na blip gazu (przed/po wymianie DENSO)
+   Dodatkowo pod lepsze testy:
+   E) DTC (stored 03 + pending 07) z dekodem P-code + zrzut Mode 06 (możliwe misfire per cyl!)
+   F) Supported PIDs (bitmapy 0100/20/40/60) — wiesz co auto realnie wystawia
+   Zasada: tylko odczyty. Bez zmian zapisu.
    ============================================================================ */
 
 const $ = s => document.querySelector(s);
-const logEl=$('#log'), verdictEl=$('#verdict');
+const logEl=$('#log'), verdictEl=$('#verdict'), liveBox=$('#livebox');
 const enc=new TextEncoder(), dec=new TextDecoder();
-const APP_VERSION='0.4.2', CHUNK=20, DOM_MAX=500;
+const APP_VERSION='0.4.4', CHUNK=20, DOM_MAX=500;
+const T_DEFAULT=3500, T_ATZ=4000, T_POLL=1600;   // dłuższe timeouty (fix STOPPED/TIMEOUT)
 
 // ---- BLE ----
 let device=null, server=null, writeChar=null, notifyChar=null, svcUuid=null, adapterProfile='(none)';
@@ -128,12 +145,10 @@ let device=null, server=null, writeChar=null, notifyChar=null, svcUuid=null, ada
 let sessionId=null, seq=0, sessionStartedWall=null, sessionStartedMono=null;
 const uuid=()=> (crypto.randomUUID? crypto.randomUUID()
   : 'sess-'+Math.random().toString(16).slice(2)+'-'+performance.now().toFixed(0));
-// ---- stan adaptera: żądany vs potwierdzony ----
 let requestedState={protocol:null,header:null,cra:null,caf:null};
 let confirmedState ={protocol:null,header:null,cra:null,caf:null};
 function resetAdapterState(){ requestedState={protocol:null,header:null,cra:null,caf:null};
   confirmedState={protocol:null,header:null,cra:null,caf:null}; }
-// ---- log health ----
 let logErrors=0, logDegraded=false;
 
 const t0=performance.now();
@@ -154,23 +169,15 @@ function idbOpen(){return new Promise(res=>{try{
 }catch(e){db=null;res(false);}});}
 function idbPut(store,obj){
   if(!db) return Promise.resolve(false);
-  let finish;
-  const done=new Promise(resolve=>{ finish=resolve; });
-  pendingWrites.add(done);
-  let settled=false;
-  const settle=ok=>{ if(settled) return; settled=true; finish(ok); };
-  try{
-    const tx=db.transaction(store,'readwrite');
-    tx.oncomplete=()=>settle(true);
-    tx.onerror=tx.onabort=()=>{ flagLogError(); settle(false); };
+  let finish; const done=new Promise(r=>{finish=r;}); pendingWrites.add(done);
+  let settled=false; const settle=ok=>{if(settled)return;settled=true;finish(ok);};
+  try{ const tx=db.transaction(store,'readwrite');
+    tx.oncomplete=()=>settle(true); tx.onerror=tx.onabort=()=>{flagLogError();settle(false);};
     tx.objectStore(store).add(obj);
   }catch(e){ flagLogError(); settle(false); }
-  done.then(()=>pendingWrites.delete(done));
-  return done;
+  done.then(()=>pendingWrites.delete(done)); return done;
 }
-async function flushWrites(){
-  while(pendingWrites.size) await Promise.all([...pendingWrites]);
-}
+async function flushWrites(){ while(pendingWrites.size) await Promise.all([...pendingWrites]); }
 function flagLogError(){ logErrors++; if(!logDegraded && logErrors>=3){ logDegraded=true;
   setLogState('LOG_DEGRADED','warn'); errline('⚠ IndexedDB: utrata zapisu (quota/tx). Log może być niepełny.'); } }
 async function idbAllBySession(store,sid){return new Promise(res=>{
@@ -183,7 +190,7 @@ async function idbDeleteSession(sid){for(const store of ['chunk','exchange']){aw
     rq.onsuccess=e=>{const c=e.target.result; if(c){ c.delete(); c.continue(); } else r(); };
     rq.onerror=()=>r();}catch(e){r();}});}}
 
-/* ---------------- widok (ring buffer) ---------------- */
+/* ---------------- widok ---------------- */
 function view(kind,dir,text){
   const div=document.createElement('span'); div.className='l '+kind;
   div.innerHTML=`<span class="t">${hhmmss()} ${dir}</span> <span class="d"></span>`;
@@ -193,8 +200,8 @@ function view(kind,dir,text){
 }
 function sys(t){ view('sys','··',t); idbPut('exchange',{session:sessionId,seq:++seq,lvl:'SYS',ts_mono:mono(),ts_wall:wall(),text:t}); }
 function errline(t){ view('er','!!',t); idbPut('exchange',{session:sessionId,seq:++seq,lvl:'ERR',ts_mono:mono(),ts_wall:wall(),text:t}); }
+function monline(t){ view('mon','◆',t); idbPut('exchange',{session:sessionId,seq:++seq,lvl:'MONITOR',ts_mono:mono(),ts_wall:wall(),text:t}); }
 
-/* ---------------- transport_chunk (TX i RX) — sesja związana z exchange ---------------- */
 function logChunk(dir,bytes,txt,exId,frag,sess){
   const hex=[...bytes].map(b=>b.toString(16).padStart(2,'0')).join(' ');
   idbPut('chunk',{session:sess||sessionId,seq:++seq,ts_mono:mono(),ts_wall:wall(),
@@ -204,11 +211,10 @@ function logChunk(dir,bytes,txt,exId,frag,sess){
 function logExchange(ex){
   idbPut('exchange',{session:ex.session||sessionId,seq:++seq,lvl:'EXCHANGE',exchange_id:ex.id,
     ts_mono_start:ex.tStart,ts_mono_end:mono(),ts_wall:wall(),
-    command:ex.cmd,response_text:ex.text,status:ex.status,
-    adapter_state:JSON.stringify(confirmedState)});
+    command:ex.cmd,response_text:ex.text,status:ex.status,adapter_state:JSON.stringify(confirmedState)});
 }
 
-/* ---------------- klasyfikacja odpowiedzi ---------------- */
+/* ---------------- klasyfikacja ---------------- */
 const NRC={0x10:'generalReject',0x11:'serviceNotSupported',0x12:'subFuncNotSupported',
   0x13:'wrongLength',0x22:'conditionsNotCorrect',0x31:'requestOutOfRange',
   0x33:'securityAccessDenied',0x35:'invalidKey',0x78:'responsePending'};
@@ -220,17 +226,13 @@ function classify(text){
   if(u.includes('BUFFER FULL')) return {status:'BUFFER_FULL'};
   if(u.includes('CAN ERROR')||u.includes('BUS ERROR')||u.includes('RX ERROR')) return {status:'BUS_ERROR'};
   if(u.includes('STOPPED')) return {status:'STOPPED'};
-  // UDS/KWP negative response: 7F <service> <nrc>
   const neg=u.replace(/[>\r\n]/g,' ').match(/\b7F\s*([0-9A-F]{2})\s*([0-9A-F]{2})\b/);
   if(neg){ const nrc=parseInt(neg[2],16); return {status:'NEGATIVE_RESPONSE',service:neg[1],nrc:neg[2],nrcName:NRC[nrc]||'?'}; }
   if(u.includes('ERROR')) return {status:'ERROR'};
-  // P2 (znane ograniczenie): OK_DATA to heurystyka tekstowa. Produkcyjny werdykt protokołu
-  // musi opierać się na parserze framingu i zgodności request/response, nie na regexie hex.
   if(/[0-9A-F]{2}(\s|\r|>|$)/.test(u)) return {status:'OK_DATA'};
   if(u.includes('OK')) return {status:'OK'};
   return {status:'OK'};
 }
-// nagłówek 29-bit: 8 hex pod rząd LUB 4 bajty rozdzielone spacją, na starcie linii
 function parseExtFrames(text){
   const frames=[];
   for(const raw of (text||'').split(/[\r\n]+/)){
@@ -238,12 +240,9 @@ function parseExtFrames(text){
     let id=null, rest='';
     const compact=s.match(/^([0-9A-Fa-f]{8})\s+(.+)$/);
     if(compact){ id=compact[1].toUpperCase(); rest=compact[2]; }
-    else{
-      const toks=s.split(/\s+/);
+    else{ const toks=s.split(/\s+/);
       if(toks.length>=7 && toks.slice(0,4).every(t=>/^[0-9A-Fa-f]{2}$/.test(t))){
-        id=toks.slice(0,4).join('').toUpperCase(); rest=toks.slice(4).join(' ');
-      }
-    }
+        id=toks.slice(0,4).join('').toUpperCase(); rest=toks.slice(4).join(' '); } }
     if(!id) continue;
     const payload=rest.split(/\s+/).filter(t=>/^[0-9A-Fa-f]{2}$/.test(t)).map(t=>t.toUpperCase());
     frames.push({canId:id,payload,raw:s});
@@ -253,18 +252,65 @@ function parseExtFrames(text){
 function matchVolvoResponse(text,p,meta){
   const frames=parseExtFrames(text);
   const positiveService=((parseInt(p.service,16)+0x40)&0xFF).toString(16).padStart(2,'0').toUpperCase();
-  // HYPOTHESIS dla XC70: odpowiedź ma [byte0, address, request-service+0x40, ...].
-  // Korelacja nie waliduje jeszcze response CAN ID dla P3; obserwowany ID zapisujemy w detalu werdyktu.
   const positive=frames.find(f=>f.payload.length>=3 && f.payload[1]===p.addr && f.payload[2]===positiveService);
   const negative=meta&&meta.status==='NEGATIVE_RESPONSE'&&meta.service===p.service&&frames.length>0;
   return {frames,positive,negative};
 }
 
-/* ---------------- kolejka: jedno żądanie naraz ---------------- */
+/* ---------------- parser standardowego OBD (Mode 01/03/07/06) ---------------- */
+// zwraca bajty danych po "41 <pid>" z ramki 7E8 (ECM) — obsługuje spacje/nagłówki
+function parseObd(text,pid){
+  const u=(text||'').toUpperCase().replace(/[\r>]/g,' ');
+  for(const hdr of ['7E8','7E9','']){
+    const re=new RegExp((hdr?hdr+'\\s+':'')+'([0-9A-F]{2})\\s+41\\s+'+pid+'((?:\\s+[0-9A-F]{2})+)');
+    const m=u.match(re);
+    if(m){ const ll=parseInt(m[1],16);
+      const bytes=m[2].trim().split(/\s+/).map(x=>parseInt(x,16));
+      return bytes.slice(0,Math.max(0,ll-2)); }
+  }
+  return null;
+}
+function pidVal(text,pid){
+  const b=parseObd(text,pid); if(!b) return null;
+  switch(pid){
+    case '0C': return {v:(b[0]*256+b[1])/4, u:'RPM', s:(( b[0]*256+b[1])/4).toFixed(0)};
+    case '04': return {v:b[0]*100/255, u:'%load', s:(b[0]*100/255).toFixed(0)};
+    case '05': return {v:b[0]-40, u:'°C ECT', s:(b[0]-40)+''};
+    case '0F': return {v:b[0]-40, u:'°C IAT', s:(b[0]-40)+''};
+    case '0B': return {v:b[0], u:'kPa MAP', s:b[0]+''};
+    case '06': return {v:(b[0]-128)*100/128, u:'%STFT', s:((b[0]-128)*100/128).toFixed(1)};
+    case '07': return {v:(b[0]-128)*100/128, u:'%LTFT', s:((b[0]-128)*100/128).toFixed(1)};
+    case '11': return {v:b[0]*100/255, u:'%TPS', s:(b[0]*100/255).toFixed(0)};
+    case '42': return {v:(b[0]*256+b[1])/1000, u:'V', s:((b[0]*256+b[1])/1000).toFixed(2)};
+    case '0A': return {v:b[0]*3, u:'kPa rail', s:(b[0]*3)+''};                       // fuel pressure (gauge) ×3
+    case '22': return {v:(b[0]*256+b[1])*0.079, u:'kPa rail(rel)', s:((b[0]*256+b[1])*0.079).toFixed(0)}; // rel to manifold
+    case '23': return {v:(b[0]*256+b[1])*10, u:'kPa rail', s:((b[0]*256+b[1])*10)+''}; // gauge ×10 (GDI/diesel)
+    case '03': { const m={1:'OL',2:'CL',4:'OL-load',8:'OL-fault',16:'CL-fault'};
+                 return {v:b[0], u:'fuelSys', s:(m[b[0]]||('0x'+b[0].toString(16)))}; }
+    case '34': case '24': { const lam=((b[0]*256+b[1])/65536)*2; const cur=(b[2]*256+b[3])/256-128;
+                 return {v:lam, u:'λ', s:lam.toFixed(3)+' ('+(cur>=0?'+':'')+cur.toFixed(2)+'mA)'}; }
+    default: return {v:null,u:'',s:b.map(x=>x.toString(16).padStart(2,'0')).join(' ')};
+  }
+}
+function decodeDtcs(text,posByte){ // 43/47 followed by DTC pairs
+  const u=(text||'').toUpperCase().replace(/[\r>]/g,' ');
+  const m=u.match(new RegExp(posByte+'((?:\\s+[0-9A-F]{2})+)'));
+  if(!m) return null;
+  const bytes=m[1].trim().split(/\s+/).map(x=>parseInt(x,16));
+  const codes=[];
+  for(let i=0;i+1<bytes.length;i+=2){
+    const a=bytes[i],b=bytes[i+1]; if(a===0&&b===0) continue;
+    const sys=['P','C','B','U'][(a>>6)&3];
+    const c=sys+((a>>4)&3)+ (a&0xF).toString(16).toUpperCase()+ (b>>4).toString(16).toUpperCase()+ (b&0xF).toString(16).toUpperCase();
+    codes.push(c);
+  }
+  return codes;
+}
+
+/* ---------------- kolejka ---------------- */
 let queue=[], inflight=null, rxBuf='', promptTimer=null;
-function enqueue(cmd,timeoutMs=2500){return new Promise(resolve=>{
-  queue.push({cmd,timeoutMs,resolve,session:sessionId}); pump();  // sesja związana z exchange w chwili kolejkowania
-  refreshControls();
+function enqueue(cmd,timeoutMs=T_DEFAULT){return new Promise(resolve=>{
+  queue.push({cmd,timeoutMs,resolve,session:sessionId}); pump(); refreshControls();
 });}
 async function pump(){
   if(inflight||queue.length===0||!writeChar) return;
@@ -274,8 +320,7 @@ async function pump(){
     view('resp','⟵',`[TIMEOUT] ${ex.cmd}`); logExchange(ex);
     ex.resolve({cmd:ex.cmd,text:ex.text,status:'TIMEOUT'}); refreshControls(); pump();
   }, inflight.timeoutMs);
-  try{
-    setRequestedState(inflight.cmd);
+  try{ setRequestedState(inflight.cmd);
     await writeBytes(inflight.cmd+($('#cr').checked?'\r':''), inflight.id, inflight.session);
     view('tx','TX',inflight.cmd);
   }catch(e){ clearTimeout(promptTimer); promptTimer=null;
@@ -293,14 +338,13 @@ function onNotify(ev){
     clearTimeout(promptTimer); promptTimer=null;
     const full=rxBuf; rxBuf=''; const ex=inflight; inflight=null;
     const c=classify(full); ex.text=full; ex.status=c.status; ex.meta=c;
-    confirmStateOn(ex);                                  // stan potwierdzany PO odpowiedzi
+    confirmStateOn(ex);
     const extra=c.status==='NEGATIVE_RESPONSE'?` (7F ${c.service} ${c.nrc} ${c.nrcName})`:'';
     view('resp','⟵',`[${ex.status}${extra}] ${full.replace(/[\r>]/g,' ').trim()}`);
     logExchange(ex);
     ex.resolve({cmd:ex.cmd,text:full,status:ex.status,meta:c}); refreshControls(); pump();
   }
 }
-/* stan adaptera: żądany na wysyłce, potwierdzony dopiero po OK; ATZ/ATD zeruje */
 function setRequestedState(cmd){
   const u=cmd.toUpperCase().replace(/\s+/g,'');
   if(u.startsWith('ATSP')) requestedState.protocol=u.slice(4);
@@ -311,41 +355,46 @@ function setRequestedState(cmd){
 function confirmStateOn(ex){
   const u=ex.cmd.toUpperCase().replace(/\s+/g,'');
   if(u==='ATZ'||u.startsWith('ATD')){ resetAdapterState(); return; }
-  if(!(ex.status==='OK'||ex.status==='OK_DATA')) return;   // tylko po sukcesie
+  if(!(ex.status==='OK'||ex.status==='OK_DATA')) return;
   if(u.startsWith('ATSP')) confirmedState.protocol=requestedState.protocol;
   else if(u.startsWith('ATSH')) confirmedState.header=requestedState.header;
   else if(u.startsWith('ATCRA')) confirmedState.cra=requestedState.cra;
   else if(u.startsWith('ATCAF')) confirmedState.caf=requestedState.caf;
 }
 async function writeBytes(str,exId,sess){
-  const bytes=enc.encode(str);
-  let frag=0;
-  for(let i=0;i<bytes.length;i+=CHUNK){
-    const c=bytes.slice(i,i+CHUNK);
-    logChunk('TX',c,dec.decode(c),exId,frag++,sess);      // TX też jako transport_chunk, do właściwej sesji
+  const bytes=enc.encode(str); let frag=0;
+  for(let i=0;i<bytes.length;i+=CHUNK){ const c=bytes.slice(i,i+CHUNK);
+    logChunk('TX',c,dec.decode(c),exId,frag++,sess);
     if(writeChar.properties.writeWithoutResponse) await writeChar.writeValueWithoutResponse(c);
-    else await writeChar.writeValue(c);
-  }
+    else await writeChar.writeValue(c); }
 }
 
-/* ---------------- profile adapterów + connect ---------------- */
+/* ---------------- profile + connect ---------------- */
 const ADAPTER_PROFILES=[
+  // z sesji 21.07: IOS-Vlink — Nordic-UART-like, JEDNA charakterystyka (write=notify).
+  {name:'IOS-Vlink / vLinker (svc e7810a71)', service:'e7810a71-73ae-499d-8c15-faa9aef0c3f2', chars:'auto'},
   {name:'FFF0 (fff2 w/fff1 n)', service:'0000fff0-0000-1000-8000-00805f9b34fb',
     write:'0000fff2-0000-1000-8000-00805f9b34fb', notify:'0000fff1-0000-1000-8000-00805f9b34fb'},
   {name:'FFE0 (ffe1 shared)', service:'0000ffe0-0000-1000-8000-00805f9b34fb',
     write:'0000ffe1-0000-1000-8000-00805f9b34fb', notify:'0000ffe1-0000-1000-8000-00805f9b34fb'},
 ];
-const KNOWN_SVC=[0xFFF0,0xFFE0,0xFFE5,...ADAPTER_PROFILES.map(p=>p.service),
-  'e7810a71-73ae-499d-8c15-faa9aef0c3f2'];
+const KNOWN_SVC=[0xFFF0,0xFFE0,0xFFE5,...ADAPTER_PROFILES.map(p=>p.service)];
 async function pickChars(server){
   const services=await server.getPrimaryServices();
-  // 1) spróbuj dopasować znany profil (exact UUID)
   for(const p of ADAPTER_PROFILES){
     const svc=services.find(s=>s.uuid===p.service); if(!svc) continue;
-    try{ const w=await svc.getCharacteristic(p.write); const n=await svc.getCharacteristic(p.notify);
-      return {w,n,svc,profile:p.name}; }catch(e){}
+    try{
+      if(p.chars==='auto'){ // wybierz write+notify w OBRĘBIE nazwanego serwisu
+        const chars=await svc.getCharacteristics(); let w=null,n=null;
+        for(const ch of chars){ const pr=ch.properties;
+          if(!n&&(pr.notify||pr.indicate)) n=ch; if(!w&&(pr.write||pr.writeWithoutResponse)) w=ch; }
+        if(w&&n) return {w,n,svc,profile:p.name};
+      }else{
+        const w=await svc.getCharacteristic(p.write); const n=await svc.getCharacteristic(p.notify);
+        return {w,n,svc,profile:p.name};
+      }
+    }catch(e){}
   }
-  // 2) fallback heurystyczny: write+notify z jednego serwisu (oznaczony)
   for(const svc of services){ const chars=await svc.getCharacteristics(); let w=null,n=null;
     for(const ch of chars){ const pr=ch.properties;
       if(!n&&(pr.notify||pr.indicate)) n=ch; if(!w&&(pr.write||pr.writeWithoutResponse)) w=ch; }
@@ -374,50 +423,44 @@ async function connect(){
   }catch(e){ errline('connect: '+e.message); setStatus('rozłączony','err'); }
 }
 function onDisc(){
-  setStatus('rozłączony','err'); connectedUI(false); sys('GATT rozłączony'); resetAdapterState();
+  setStatus('rozłączony','err'); connectedUI(false); sys('GATT rozłączony'); resetAdapterState(); monitoring=false;
   if(promptTimer){ clearTimeout(promptTimer); promptTimer=null; }
-  if(inflight){
-    const ex=inflight; inflight=null; ex.text=rxBuf; ex.status='DISCONNECTED'; rxBuf='';
-    logExchange(ex);
-    ex.resolve({cmd:ex.cmd,text:ex.text,status:'DISCONNECTED'});
-  }
+  if(inflight){ const ex=inflight; inflight=null; ex.text=rxBuf; ex.status='DISCONNECTED'; rxBuf='';
+    logExchange(ex); ex.resolve({cmd:ex.cmd,text:ex.text,status:'DISCONNECTED'}); }
   while(queue.length){ const q=queue.shift(); q.resolve({cmd:q.cmd,text:'',status:'DISCONNECTED'}); }
   writeChar=notifyChar=server=null;
 }
-async function disconnect(){ try{ if(device&&device.gatt.connected) device.gatt.disconnect(); }catch(e){} }
+async function disconnect(){ monitoring=false; try{ if(device&&device.gatt.connected) device.gatt.disconnect(); }catch(e){} }
 
 function setStatus(t,c){ const el=$('#st'); el.textContent=t; el.className='status'+(c?' '+c:''); }
 function setLogState(t,c){ const el=$('#logstate'); el.style.display=''; el.textContent=t; el.className='status'+(c?' '+c:''); }
-let connected=false, macroRunning=false;
-function connectedUI(on){ connected=on;
-  $('#btnConn').disabled=on; $('#btnDisc').disabled=!on;
-  refreshControls();
-}
-function busy(){ return !!inflight || queue.length>0 || macroRunning; }
+let connected=false, macroRunning=false, monitoring=false;
+function connectedUI(on){ connected=on; $('#btnConn').disabled=on; $('#btnDisc').disabled=!on; refreshControls(); }
+function busy(){ return !!inflight || queue.length>0 || macroRunning || monitoring; }
 function refreshControls(){
-  const canAct=connected&&!macroRunning;
-  document.querySelectorAll('button.macro').forEach(b=>b.disabled=!canAct);
-  $('#btnSend').disabled=!canAct; $('#cmd').disabled=!canAct;
-  // P1: nie pozwól zmienić sesji w trakcie wymiany/kolejki/makra (TX i RX trafiłyby do różnych sesji)
-  $('#btnNewSess').disabled=busy();
-  $('#btnDelSess').disabled=busy();
+  const canMacro=connected&&!macroRunning&&!monitoring;
+  document.querySelectorAll('button.macro').forEach(b=>b.disabled=!canMacro);
+  $('#btnSend').disabled=!canMacro; $('#cmd').disabled=!canMacro;
+  $('#btnMon').disabled=!(connected&&!macroRunning);          // Monitor: aktywny też podczas monitoringu (żeby STOP)
+  $('#btnMon').textContent = monitoring ? 'D · STOP monitor ■' : 'D · Monitor live (lambda/trymy) ▶';
+  $('#btnMon').classList.toggle('running', monitoring);
+  $('#btnNewSess').disabled=busy(); $('#btnDelSess').disabled=busy();
 }
 
 /* ---------------- walidacja payloadu Volvo ---------------- */
-const VOLVO_READ_SERVICES=new Set(['A6','AE']);  // allowlist: read data / read DTC
+const VOLVO_READ_SERVICES=new Set(['A6','AE']);
 function parseVolvoPayload(str){
   const toks=(str||'').trim().split(/\s+/).filter(Boolean).map(t=>t.toUpperCase());
   if(toks.length!==8) return {ok:false,msg:`Wymagane dokładnie 8 bajtów (jest ${toks.length}).`};
   if(!toks.every(t=>/^[0-9A-F]{2}$/.test(t))) return {ok:false,msg:'Każdy bajt = 2 znaki hex.'};
   const service=toks[2];
   if(!VOLVO_READ_SERVICES.has(service)) return {ok:false,msg:`Serwis ${service} spoza allowlisty (dozwolone tylko A6/AE — odczyt).`};
-  return {ok:true, toks, addr:toks[1], service, pid:toks.slice(3).join(' '),
-    byte0Verified:false,
-    warning:'Semantyka byte0 nie jest potwierdzona dla XC70; brak blokującej walidacji bez reguły z RAW.',
+  return {ok:true, toks, addr:toks[1], service, pid:toks.slice(3).join(' '), byte0Verified:false,
+    warning:'Semantyka byte0/response CAN ID nie potwierdzona dla XC70.',
     breakdown:`byte0=${toks[0]} (UNVERIFIED) addr=${toks[1]} svc=${toks[2]} pid=${toks.slice(3,5).join(' ')} …`};
 }
 
-/* ---------------- MAKRA + werdykty (odporne na puste wyniki) ---------------- */
+/* ---------------- MAKRA ---------------- */
 function V(verdict,msg,detail){ return {verdict,msg,detail}; }
 function okish(s){ return s==='OK'||s==='OK_DATA'; }
 function find(r,cmd){ return r.find(x=>x&&x.cmd===cmd); }
@@ -425,100 +468,117 @@ function find(r,cmd){ return r.find(x=>x&&x.cmd===cmd); }
 const MACROS={
   A:{ note:'SETUP — identyfikacja + konfiguracja',
       cmds:()=>['ATZ','ATI','AT@1','ATE0','ATL0','ATS1','ATH1'],
-      evaluate:r=>{
-        if(!r.length) return V('INCONCLUSIVE','Brak wyników.');
+      evaluate:r=>{ if(!r.length) return V('INCONCLUSIVE','Brak wyników.');
         const id=r.find(x=>/ELM327/i.test(x.text||''));
-        const setupCmds=['ATE0','ATL0','ATS1','ATH1'];
-        const setupBad=setupCmds.map(c=>find(r,c)).filter(x=>x&&!okish(x.status));
+        const setupBad=['ATE0','ATL0','ATS1','ATH1'].map(c=>find(r,c)).filter(x=>x&&!okish(x.status));
         if(!id) return V('INCONCLUSIVE','Brak identyfikacji ELM327 — sprawdź log/połączenie.');
-        if(setupBad.length) return V('INCONCLUSIVE','Adapter wykryty (IDENTITY_PASS), ale konfiguracja niepełna: '+setupBad.map(x=>x.cmd+'='+x.status).join(', '));
+        if(setupBad.length) return V('INCONCLUSIVE','Adapter wykryty, ale konfiguracja niepełna: '+setupBad.map(x=>x.cmd+'='+x.status).join(', '));
         return V('PASS','IDENTITY_PASS + SETUP_PASS.', (id.text||'').replace(/[\r>]/g,' ').trim()); }
   },
   B:{ note:'11-bit sanity — oczekiwane 41 00 z 7E8',
-      cmds:()=>['ATE0','ATS1','ATH1','ATCAF1','ATSP6','0100','0120','010C'],   // self-sufficient także po C/CAF0
+      cmds:()=>['ATE0','ATS1','ATH1','ATCAF1','ATSP6','0100','0120','010C'],
       evaluate:r=>{
         const setupCmds=['ATE0','ATS1','ATH1','ATCAF1','ATSP6'];
         const missing=setupCmds.filter(c=>!find(r,c));
-        if(missing.length) return V('INCONCLUSIVE','Niepełny setup 11-bit — brak wyników: '+missing.join(', '));
+        if(missing.length) return V('INCONCLUSIVE','Niepełny setup 11-bit — brak: '+missing.join(', '));
         const setupBad=setupCmds.map(c=>find(r,c)).find(x=>!okish(x.status));
         if(setupBad) return V('FAIL',`SETUP_11BIT_NOT_CONFIRMED — ${setupBad.cmd}=${setupBad.status}.`);
         const q=find(r,'0100'); if(!q) return V('INCONCLUSIVE','Brak wyniku 0100.');
         if(/41\s*00/i.test(q.text||'')) return V('PASS','ECM odpowiada na standard OBD (11-bit).',(q.text||'').replace(/[\r>]/g,' ').trim());
-        if(['NO_DATA','TIMEOUT','NO_CONNECT','DISCONNECTED'].includes(q.status)) return V('FAIL','Brak komunikacji standard OBD ('+q.status+'). Sprawdź zapłon / pin OBD / adapter zanim testujesz 29-bit.');
+        if(['NO_DATA','TIMEOUT','NO_CONNECT','DISCONNECTED'].includes(q.status)) return V('FAIL','Brak komunikacji standard OBD ('+q.status+'). Sprawdź zapłon / pin OBD / adapter.');
         return V('INCONCLUSIVE','Niejednoznaczna odpowiedź 0100: '+q.status); }
   },
   C:{ note:'29-bit — rozdzielone werdykty (AT != potwierdzenie transmisji CAN)',
-      // self-sufficient: własny ATE0/ATS1/ATH1 (nie zależy od makra A).
-      // BEZ ATCRA — audyt P0: ATCRA to JEDEN dokładny ID (bez wildcardu), '...FF' odfiltrowałby
-      // prawidłową odpowiedź i dał sztuczne NO_DATA. W discovery: brak filtra, ATH1 pokazuje realne ID.
-      cmds:()=>{
-        const p=parseVolvoPayload($('#req29').value);
+      cmds:()=>{ const p=parseVolvoPayload($('#req29').value);
         const base=['ATE0','ATS1','ATH1','ATSP7','ATCRA','ATCAF0','ATAL','ATCP 00','ATSH 0F FF FE'];
-        return p.ok? [...base, p.toks.join(' ')] : base;
-      },
+        return p.ok? [...base, p.toks.join(' ')] : base; },
       evaluate:r=>{
         const setupCmds=['ATE0','ATS1','ATH1','ATSP7','ATCRA','ATCAF0','ATAL','ATCP 00','ATSH 0F FF FE'];
         const missing=setupCmds.filter(c=>!find(r,c));
-        if(missing.length) return V('INCONCLUSIVE','Niepełny setup 29-bit — brak wyników: '+missing.join(', '));
+        if(missing.length) return V('INCONCLUSIVE','Niepełny setup 29-bit — brak: '+missing.join(', '));
         const setup=setupCmds.map(c=>find(r,c));
         const unsup=setup.find(x=>x.status==='AT_UNSUPPORTED');
-        if(unsup) return V('FAIL',`COMMAND_SET_NOT_SUPPORTED — firmware odrzuca ${unsup.cmd} ("?"). To brak TEGO wariantu komendy, nie ostateczny brak 29-bit. Sprawdź nowszy firmware / inny adapter BLE z 29-bit.`);
+        if(unsup) return V('FAIL',`COMMAND_SET_NOT_SUPPORTED — firmware odrzuca ${unsup.cmd} ("?").`);
         const setupBad=setup.find(x=>!okish(x.status));
         if(setupBad) return V('INCONCLUSIVE',`SETUP_NOT_CONFIRMED — ${setupBad.cmd}=${setupBad.status}. Nie wysuwam wniosku o pojeździe.`);
         const p=parseVolvoPayload($('#req29').value);
-        if(!p.ok) return V('INCONCLUSIVE',`AT 29-bit przyjęte (COMMAND_SET_SUPPORTED), ale payload nie wysłany: ${p.msg} Wklej zweryfikowane 8 bajtów (serwis A6/AE) i powtórz.`);
-        const req=r[r.length-1];
-        if(!req) return V('INCONCLUSIVE','COMMAND_SET_SUPPORTED, brak wyniku requestu.');
-        const match=matchVolvoResponse(req.text,p,req.meta);
+        if(!p.ok) return V('INCONCLUSIVE',`AT 29-bit przyjęte (COMMAND_SET_SUPPORTED), ale payload nie wysłany: ${p.msg}`);
+        const req=r[r.length-1]; if(!req) return V('INCONCLUSIVE','COMMAND_SET_SUPPORTED, brak wyniku requestu.');
+        const match=matchVolvoResponse(req.text,p,req.meta); const ext=match.frames.length>0;
         if(req.status==='OK_DATA' && match.positive)
-          return V('PASS','VEHICLE_RESPONSE_PAYLOAD_CORRELATED — adres i usługa pasują do requestu wg hipotezy layoutu XC70; response CAN ID jest zaobserwowany, ale jeszcze niezweryfikowany dla P3.',`CAN_OBSERVED=${match.positive.canId} payload=${match.positive.payload.join(' ')} | ${p.warning}`);
+          return V('PASS','VEHICLE_RESPONSE_PAYLOAD_CORRELATED — adres i usługa pasują (hipoteza layoutu XC70); response CAN ID zaobserwowany, niezweryfikowany.',`CAN_OBSERVED=${match.positive.canId} payload=${match.positive.payload.join(' ')}`);
         if(req.status==='NEGATIVE_RESPONSE' && match.negative)
-          return V('PASS','VEHICLE_RESPONSE_PAYLOAD_CORRELATED — skorelowany negative response z ramką 29-bit; response CAN ID pozostaje niezweryfikowany dla P3.',`CAN_OBSERVED=${match.frames[0].canId} 7F ${req.meta.service} ${req.meta.nrc} ${req.meta.nrcName}`);
-        if(match.frames.length)
-          return V('INCONCLUSIVE','FRAME_OBSERVED — wykryto ramkę 29-bit, ale nie potwierdzono zgodności adresu/usługi z requestem. Nie awansuję do PASS.',match.frames.map(f=>f.raw).join(' | '));
-        if(req.status==='OK_DATA' || req.status==='NEGATIVE_RESPONSE')
-          return V('INCONCLUSIVE','Odpowiedź bez parsowalnego nagłówka 29-bit — możliwe echo, inny framing lub niezgodny adapter.',(req.text||'').replace(/[\r>]/g,' ').trim());
-        return V('INCONCLUSIVE','COMMAND_SET_SUPPORTED, ale INCONCLUSIVE_FILTER_OR_ADDRESS — brak odpowiedzi ('+req.status+'). Możliwy zły adres/PID. NIE dowodzi braku 29-bit. Odpal Cross-check.'); }
+          return V('PASS','VEHICLE_RESPONSE_PAYLOAD_CORRELATED — skorelowany negative response z ramką 29-bit.',`CAN_OBSERVED=${match.frames[0].canId} 7F ${req.meta.service} ${req.meta.nrc} ${req.meta.nrcName}`);
+        if(ext) return V('INCONCLUSIVE','FRAME_OBSERVED — ramka 29-bit bez potwierdzonej korelacji adresu/usługi.',match.frames.map(f=>f.raw).join(' | '));
+        if(req.status==='OK_DATA'||req.status==='NEGATIVE_RESPONSE') return V('INCONCLUSIVE','Odpowiedź bez parsowalnego nagłówka 29-bit — echo/inny framing/niezgodny adapter.',(req.text||'').replace(/[\r>]/g,' ').trim());
+        return V('INCONCLUSIVE','COMMAND_SET_SUPPORTED, INCONCLUSIVE_FILTER_OR_ADDRESS — brak odpowiedzi ('+req.status+'). Odpal Cross-check.'); }
   },
   X:{ note:'Cross-check — standard OBD na 29-bit (18DB33F1)',
       cmds:()=>['ATE0','ATS1','ATH1','ATSP7','ATCRA','ATCAF1','ATSH 18 DB 33 F1','0100'],
-      evaluate:r=>{
-        const setup=['ATE0','ATS1','ATH1','ATSP7','ATCRA','ATCAF1','ATSH 18 DB 33 F1'].map(c=>find(r,c)).filter(Boolean);
-        const bad=setup.find(x=>!okish(x.status));
-        if(bad) return V('FAIL',`Cross-check setup odrzucony: ${bad.cmd}=${bad.status}.`);
+      evaluate:r=>{ const setup=['ATE0','ATS1','ATH1','ATSP7','ATCRA','ATCAF1','ATSH 18 DB 33 F1'].map(c=>find(r,c)).filter(Boolean);
+        const bad=setup.find(x=>!okish(x.status)); if(bad) return V('FAIL',`Cross-check setup odrzucony: ${bad.cmd}=${bad.status}.`);
         const q=find(r,'0100');
-        if(q && /41\s*00/i.test(q.text||'') && parseExtFrames(q.text).length) return V('PASS','Adapter obsługuje 29-bit: standard OBD odpowiedział z nagłówkiem rozszerzonym. Jeśli C=INCONCLUSIVE → problem w adresie/PID/formacie Volvo.');
-        if(q && /41\s*00/i.test(q.text||'')) return V('INCONCLUSIVE','Jest 41 00, ale brak parsowalnego nagłówka 29-bit — sprawdź RAW/ATH1.');
+        if(q && /41\s*00/i.test(q.text||'') && parseExtFrames(q.text).length) return V('PASS','Adapter obsługuje 29-bit: standard OBD odpowiedział z nagłówkiem rozszerzonym.');
+        if(q && /41\s*00/i.test(q.text||'')) return V('INCONCLUSIVE','Jest 41 00, brak parsowalnego nagłówka 29-bit — sprawdź RAW.');
         if(q && q.status==='AT_UNSUPPORTED') return V('FAIL','Adapter odrzuca konfigurację 29-bit.');
-        return V('INCONCLUSIVE','Brak odpowiedzi na standard-OBD-29-bit — auto może nie wystawiać generic OBD na 29-bit. Rozstrzyga wtedy setup z makra C.'); }
+        return V('INCONCLUSIVE','Brak odpowiedzi na standard-OBD-29-bit — auto może nie wystawiać generic OBD na 29-bit.'); }
   },
   Z:{ note:'CLEANUP', cmds:()=>['ATCAF1','ATCRA','ATSP0'],
       evaluate:r=>{ const bad=r.filter(x=>x&&!okish(x.status));
-        return bad.length? V('INCONCLUSIVE','Cleanup częściowy — nie wszystkie komendy OK: '+bad.map(x=>x.cmd+'='+x.status).join(', '))
-                         : V('PASS','Przywrócono auto-format / filtr / auto-protokół.'); }
+        return bad.length? V('INCONCLUSIVE','Cleanup częściowy: '+bad.map(x=>x.cmd+'='+x.status).join(', ')) : V('PASS','Przywrócono auto-format / filtr / auto-protokół.'); }
+  },
+  // E — DTC (stored 03 + pending 07) + Mode 06 (możliwe misfire per cyl na standardzie!)
+  E:{ note:'DTC stored/pending + Mode 06 (monitor)',
+      cmds:()=>['ATE0','ATS1','ATH1','ATCAF1','ATSP6','03','07','06'],
+      evaluate:r=>{
+        const set=['ATSP6'].map(c=>find(r,c)).find(x=>x&&!okish(x.status));
+        if(set) return V('INCONCLUSIVE','Setup nie potwierdzony: '+set.cmd+'='+set.status);
+        const s=find(r,'03'), p=find(r,'07'), m6=find(r,'06');
+        const stored=s?decodeDtcs(s.text,'43'):null;
+        const pend=p?decodeDtcs(p.text,'47'):null;
+        const parts=[];
+        parts.push('DTC zapisane (03): '+(stored&&stored.length?stored.join(', '):(s&&/43/.test((s.text||'').toUpperCase())?'brak':(s?s.status:'—'))));
+        parts.push('DTC oczekujące (07): '+(pend&&pend.length?pend.join(', '):(p&&/47/.test((p.text||'').toUpperCase())?'brak':(p?p.status:'—'))));
+        const m6txt=m6?(m6.text||'').replace(/[\r>]/g,' ').trim():'—';
+        parts.push('Mode 06 (surowo, może zawierać misfire per cyl — do interpretacji): '+m6txt.slice(0,300));
+        const found=(stored&&stored.length)||(pend&&pend.length);
+        return V(found?'INFO':'PASS', found?'DTC znalezione — patrz szczegóły.':'Brak zapisanych/oczekujących DTC (P0xxx).', parts.join('\n')); }
+  },
+  // F — supported PIDs (bitmapy)
+  F:{ note:'Supported PIDs (bitmapy 0100/20/40/60)',
+      cmds:()=>['ATE0','ATS1','ATH1','ATCAF1','ATSP6','0100','0120','0140','0160'],
+      evaluate:r=>{
+        const supported=[];
+        [['0100','00'],['0120','20'],['0140','40'],['0160','60']].forEach(([cmd,base])=>{
+          const q=find(r,cmd); if(!q) return;
+          const b=parseObd(q.text,base); if(!b||b.length<4) return;
+          const bits=(b[0]<<24)|(b[1]<<16)|(b[2]<<8)|b[3];
+          const start=parseInt(base,16);
+          for(let i=0;i<32;i++){ if(bits&(1<<(31-i))){ const pid=(start+1+i).toString(16).padStart(2,'0').toUpperCase(); supported.push(pid); } }
+        });
+        const hi=['0C RPM','04 load','05 ECT','0F IAT','0B MAP','10 MAF','11 TPS','06 STFT','07 LTFT','03 fuelSys','34 λ-wideband','42 Vbat','5E fuelRate']
+          .filter(x=>supported.includes(x.slice(0,2)));
+        return V('INFO', `Auto wystawia ${supported.length} standardowych PID.`, 'Kluczowe dostępne: '+(hi.join(' · ')||'—')+'\nWszystkie: '+supported.join(' ')); }
   }
 };
 async function runMacro(key){
-  if(!connected){ errline('makro wymaga połączenia'); return; }
+  if(!connected||monitoring){ errline('makro wymaga połączenia (i nie w trakcie monitora)'); return; }
   const m=MACROS[key]; if(!m) return;
-  macroRunning=true; refreshControls();
-  sys(`▶ MAKRO ${key}: ${m.note}`);
+  macroRunning=true; refreshControls(); sys(`▶ MAKRO ${key}: ${m.note}`);
   const results=[];
   for(const c of m.cmds()){
     if(!writeChar){ errline('przerwano — brak połączenia'); break; }
-    const res=await enqueue(c,/^ATZ/i.test(c)?3000:2500);
-    results.push(res);
+    const res=await enqueue(c,/^ATZ/i.test(c)?T_ATZ:T_DEFAULT); results.push(res);
     if(res.status==='DISCONNECTED'){ errline('rozłączono w trakcie makra'); break; }
-    await new Promise(r=>setTimeout(r,120));
+    // settle: po zmianie protokołu daj adapterowi chwilę (fix STOPPED)
+    await new Promise(r=>setTimeout(r, /^ATSP/i.test(c)?350:180));
   }
-  const verdict=m.evaluate(results);
-  renderVerdict(key,verdict,results);
-  sys(`■ MAKRO ${key}: ${verdict.verdict}`);
+  const verdict=m.evaluate(results); renderVerdict(key,verdict,results); sys(`■ MAKRO ${key}: ${verdict.verdict}`);
   macroRunning=false; refreshControls();
 }
 function renderVerdict(key,v,results){
   const box=document.createElement('div'); box.className='v '+v.verdict;
-  const errs=results.filter(r=>r&&['AT_UNSUPPORTED','NO_DATA','BUS_ERROR','TIMEOUT','WRITE_ERROR','DISCONNECTED','NEGATIVE_RESPONSE','BUFFER_FULL'].includes(r.status));
+  const errs=(results||[]).filter(r=>r&&['AT_UNSUPPORTED','NO_DATA','BUS_ERROR','TIMEOUT','WRITE_ERROR','DISCONNECTED','NEGATIVE_RESPONSE','BUFFER_FULL','STOPPED'].includes(r.status));
   box.innerHTML=`<b>MAKRO ${key}: ${v.verdict}</b><br>${esc(v.msg)}`
     +(v.detail?`<br><span style="color:var(--dim);font-family:var(--mono);font-size:11px">${esc(v.detail)}</span>`:'')
     +(errs.length?`<br><span style="color:var(--dim);font-size:11px">zdarzenia: ${errs.map(e=>e.cmd+'='+e.status).join(', ')}</span>`:'');
@@ -526,18 +586,65 @@ function renderVerdict(key,v,results){
 }
 function esc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
-/* ---------------- sesje + eksport (wspólny seq, jedna sesja) ---------------- */
-function newSession(){
-  if(busy()){ errline('nie można zmienić sesji — trwa wymiana/kolejka/makro'); return; }
-  sessionId=uuid(); seq=0; logErrors=0; logDegraded=false;
-  sessionStartedWall=wall(); sessionStartedMono=mono();
+/* ---------------- ZNACZNIK PALIWA (ground-truth) + wstępny auto-guess ---------------- */
+let fuelMark=null;                 // ręczny: 'BENZYNA' | 'LPG' | null
+function setFuel(m){ fuelMark=m;
+  $('#fuelchip').textContent='paliwo: '+(m||'—');
+  $('#fuelchip').className='status'+(m?' on':'');
+  sys('⛽ znacznik paliwa (ręczny): '+(m||'wyczyszczony'));
+  idbPut('exchange',{session:sessionId,seq:++seq,lvl:'FUEL_MARK',ts_mono:mono(),ts_wall:wall(),text:(m||'clear')}); }
+// WSTĘPNY, NIEKALIBROWANY: pompa benzyny zwykle gaśnie na LPG → wysokie ciśnienie=benzyna, niskie=LPG.
+// Do potwierdzenia testem przełączenia; progi ustawię po Twoich danych.
+function fuelGuess(railKpa){
+  if(fuelMark) return fuelMark+' (ręczny)';
+  if(railKpa==null) return '? (brak PID ciśnienia)';
+  if(railKpa>250) return 'BENZYNA? (pompa pracuje)';
+  if(railKpa<100) return 'LPG? (pompa off)';
+  return '? ('+railKpa.toFixed(0)+' kPa — strefa niepewna)';
+}
+
+/* ---------------- MONITOR LIVE (D) — dekodowane, ze STOP; pod blip gazu + detekcja paliwa ---------------- */
+const MON_PIDS=['0C','34','06','07','0B','04','05'];   // RPM, λ, STFT, LTFT, MAP, load, ECT
+let railPid=null;                                      // wykryty PID ciśnienia rail (0A/23/22)
+async function toggleMonitor(){
+  if(monitoring){ monitoring=false; return; }            // STOP
+  if(!connected||macroRunning) return;
+  monitoring=true; refreshControls(); liveBox.classList.add('show');
+  sys('▶ MONITOR live — dekodowane PID + ciśnienie rail. Blip gazu → patrz λ. Przełącz paliwo → patrz ciśnienie/LTFT. STOP by zakończyć.');
+  for(const c of ['ATE0','ATS1','ATH1','ATCAF1','ATSP6']){ if(!monitoring) break; await enqueue(c,T_DEFAULT); await new Promise(r=>setTimeout(r,120)); }
+  // wykryj który PID ciśnienia paliwa działa na tym aucie (raz)
+  railPid=null;
+  for(const pid of ['0A','23','22']){ if(!monitoring) break;
+    const res=await enqueue('01'+pid,T_POLL); if(pidVal(res.text,pid)){ railPid=pid; sys('ciśnienie paliwa: używam PID '+pid); break; } }
+  if(!railPid) sys('⚠ brak standardowego PID ciśnienia paliwa — detekcja paliwa oprze się na podpisie LTFT/λ (słabszym). Odpal F by sprawdzić enhanced.');
+  const pollset = railPid? [...MON_PIDS, railPid] : MON_PIDS;
+  let cyc=0;
+  while(monitoring && connected){
+    const vals={};
+    for(const pid of pollset){ if(!monitoring) break;
+      const res=await enqueue('01'+pid, T_POLL); const pv=pidVal(res.text,pid); if(pv) vals[pid]=pv; }
+    cyc++;
+    const rail = railPid&&vals[railPid]? vals[railPid].v : null;
+    const line=`#${cyc}  RPM=${vals['0C']?vals['0C'].s:'—'}  λ=${vals['34']?vals['34'].s:'—'}  `
+      +`STFT=${vals['06']?vals['06'].s:'—'}%  LTFT=${vals['07']?vals['07'].s:'—'}%  `
+      +`MAP=${vals['0B']?vals['0B'].s:'—'}kPa  load=${vals['04']?vals['04'].s:'—'}%  ECT=${vals['05']?vals['05'].s:'—'}°C  `
+      +`rail=${rail!=null?rail.toFixed(0)+'kPa':'—'}  ⛽${fuelGuess(rail)}`;
+    liveBox.textContent=line;
+    monline(line);
+  }
+  monitoring=false; refreshControls();
+  sys('■ MONITOR zatrzymany.');
+}
+
+/* ---------------- sesje + eksport ---------------- */
+function newSession(){ if(busy()){ errline('nie można zmienić sesji — trwa operacja'); return; }
+  sessionId=uuid(); seq=0; logErrors=0; logDegraded=false; sessionStartedWall=wall(); sessionStartedMono=mono();
   $('#sesslabel').textContent='sesja: '+sessionId.slice(0,8); $('#logstate').style.display='none';
   sys('── nowa sesja '+sessionId+' ──'); refreshControls(); }
 async function exportCsv(){
-  if(busy()){ errline('eksport dostępny po zakończeniu wymiany/kolejki/makra'); return; }
+  if(busy()){ errline('eksport dostępny po zakończeniu operacji'); return; }
   await flushWrites();
-  const chunks=await idbAllBySession('chunk',sessionId);
-  const exch  =await idbAllBySession('exchange',sessionId);
+  const chunks=await idbAllBySession('chunk',sessionId); const exch=await idbAllBySession('exchange',sessionId);
   const rows=[];
   chunks.forEach(c=>rows.push({seq:c.seq,rec:['transport_chunk',c.seq,Math.round(c.ts_mono||0),c.ts_wall||'',c.dir||'',c.exchange_id??'',(c.text||'').replace(/\r/g,'\\r')+' | '+(c.bytes_hex||''),'']}));
   exch.forEach(e=>{ if(e.lvl==='EXCHANGE')
@@ -548,10 +655,10 @@ async function exportCsv(){
     adapter:{name:device?(device.name||device.id):null,profile:adapterProfile,service_uuid:svcUuid},
     capture_scope:{transport:'ble',mode:'active-diagnostic-elm',bus:'selected-by-adapter',adapter_state:confirmedState},
     records:{transport_chunks:chunks.length,exchange_records:exch.length},
-    dropped_count:null,dropped_count_note:'unknown — ELM/BLE nie udostępnia pełnego licznika dropów',
-    log_degraded:logDegraded};
+    fuel_mark_last:fuelMark, fuel_rail_pid:railPid,
+    dropped_count:null,dropped_count_note:'unknown — ELM/BLE nie udostępnia pełnego licznika dropów',log_degraded:logDegraded};
   rows.push({seq:-1,rec:['capture_manifest',-1,0,sessionStartedWall||'','','',JSON.stringify(manifest),'']});
-  rows.sort((a,b)=>(a.seq??0)-(b.seq??0));                     // wspólny sequence number
+  rows.sort((a,b)=>(a.seq??0)-(b.seq??0));
   const head=['level','seq','ts_mono_ms','ts_wall','dir_or_status','exchange_id','text_or_hex','adapter_state'];
   const csv=[head,...rows.map(r=>r.rec)].map(r=>r.map(f=>`"${String(f).replace(/"/g,'""')}"`).join(';')).join('\n');
   const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob);
@@ -561,25 +668,25 @@ async function exportCsv(){
 /* ---------------- UI ---------------- */
 $('#btnConn').onclick=connect;
 $('#btnDisc').onclick=disconnect;
-$('#btnSend').onclick=()=>{ if(macroRunning){ errline('poczekaj — trwa makro'); return; } const v=$('#cmd').value.trim(); if(v){ enqueue(v); $('#cmd').value=''; } };
+$('#btnSend').onclick=()=>{ if(busy()){ errline('poczekaj — trwa operacja'); return; } const v=$('#cmd').value.trim(); if(v){ enqueue(v); $('#cmd').value=''; } };
 $('#cmd').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#btnSend').click(); }});
 document.querySelectorAll('button.macro').forEach(b=>b.onclick=()=>runMacro(b.dataset.macro));
+$('#btnMon').onclick=()=>toggleMonitor();
+$('#btnFuelP').onclick=()=>setFuel('BENZYNA');
+$('#btnFuelG').onclick=()=>setFuel('LPG');
+$('#btnFuelClr').onclick=()=>setFuel(null);
 $('#btnClear').onclick=()=>{ logEl.innerHTML=''; };
 $('#dlLog').onclick=e=>{ e.preventDefault(); exportCsv(); };
 $('#btnNewSess').onclick=()=>newSession();
-$('#btnDelSess').onclick=async()=>{
-  if(busy()){ errline('nie można usunąć sesji — trwa wymiana/kolejka/makro'); return; }
-  if(confirm('Usunąć zapisany log tej sesji z IndexedDB?')){
-    const deleted=sessionId; await flushWrites(); await idbDeleteSession(deleted);
-    newSession(); sys('usunięto poprzednią sesję '+deleted.slice(0,8));
-  }
-};
+$('#btnDelSess').onclick=async()=>{ if(busy()){ errline('nie można usunąć sesji — trwa operacja'); return; }
+  if(confirm('Usunąć zapisany log tej sesji z IndexedDB?')){ const deleted=sessionId; await flushWrites(); await idbDeleteSession(deleted); newSession(); sys('usunięto poprzednią sesję '+deleted.slice(0,8)); } };
 
 idbOpen().then(ok=>{
   newSession();
-  sys('Volvo OBD Console v'+APP_VERSION+' — mobile discovery tool. '+(ok?'log→IndexedDB aktywny.':'IndexedDB niedostępny (log tylko w widoku).'));
-  sys('Zalecana kolejność: A → B → C. Werdykt 29-bit czytaj z banera makra C (COMMAND_SET_SUPPORTED / FRAME_OBSERVED / VEHICLE_RESPONSE_PAYLOAD_CORRELATED).');
-  sys('Volvo payload = EKSPERYMENTALNY: adres/serwis/PID NIEpotwierdzone dla XC70 T6. Użyj tylko definicji z RAW potwierdzonym na tym aucie; dane Tigo2000 dotyczą innego Volvo.');
+  sys('Volvo OBD Console v'+APP_VERSION+' — mobile discovery tool. '+(ok?'log→IndexedDB aktywny.':'IndexedDB niedostępny.'));
+  sys('29-bit: A→B→C. Silnik: D Monitor (blip gazu → λ; przełącz paliwo → ciśnienie rail/LTFT), E DTC+Mode06, F supported PIDs.');
+  sys('Paliwo: klikaj ⛽Benzyna/🔵LPG w chwili przełączenia (ground-truth). Auto-guess z ciśnienia rail = WSTĘPNY, kalibracja po Twoich danych.');
+  sys('Volvo payload = EKSPERYMENTALNY: użyj tylko definicji z RAW potwierdzonym na TYM aucie.');
   if(!navigator.bluetooth) errline('navigator.bluetooth niedostępny — Android=Chrome, iOS=Bluefy, https wymagane.');
 });
 </script>
