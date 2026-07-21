@@ -2,842 +2,254 @@
 <html lang="pl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Volvo OBD Console (XC70 P3) v0.5.2</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#08111d">
+<title>XC70 Drive Data v0.7.0</title>
 <style>
-  :root{
-    --bg:#0d1117;--panel:#161b22;--line:#30363d;--txt:#e6edf3;--dim:#8b949e;
-    --acc:#2f81f7;--ok:#3fb950;--err:#f85149;--warn:#d29922;--tx:#58a6ff;--rx:#7ee787;--inc:#d29922;--mon:#d2a8ff;
-    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%}
-  body{display:flex;flex-direction:column;height:100dvh}
-  header{padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line);
-    display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  header h1{font-size:14px;margin:0;font-weight:600}
-  .status{font-size:12px;padding:2px 8px;border-radius:10px;border:1px solid var(--line);color:var(--dim)}
-  .status.on{color:var(--ok);border-color:var(--ok)}
-  .status.err{color:var(--err);border-color:var(--err)}
-  .status.warn{color:var(--warn);border-color:var(--warn)}
-  button{background:var(--panel);color:var(--txt);border:1px solid var(--line);
-    border-radius:6px;padding:8px 10px;font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
-  button:active{background:#21262d}
-  button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
-  button.macro{background:#1c2431;border-color:#2b3a52;color:var(--tx)}
-  button.live{background:#221a2e;border-color:#3d2b52;color:var(--mon)}
-  button.live.running{background:#3d2b52;color:#fff}
-  button:disabled{opacity:.35}
-  .bar{display:flex;gap:6px;padding:8px 12px;flex-wrap:wrap;background:var(--panel);border-bottom:1px solid var(--line)}
-  .bar small{width:100%;color:var(--dim);font-size:11px;margin-bottom:2px}
-  #verdict{padding:0 12px}
-  #verdict .v{margin:8px 0;padding:10px 12px;border-radius:8px;border:1px solid var(--line);font-size:13px}
-  #verdict .v.PASS{border-color:var(--ok);background:#0f2417}
-  #verdict .v.FAIL{border-color:var(--err);background:#2a1414}
-  #verdict .v.INCONCLUSIVE{border-color:var(--inc);background:#2a2413}
-  #verdict .v.INFO{border-color:var(--acc);background:#0f1b2e}
-  #verdict .v b{font-size:14px}
-  #live{padding:0 12px}
-  #live .box{display:none;margin:8px 0;padding:10px 12px;border-radius:8px;border:1px solid #3d2b52;background:#160f1f;
-    font-family:var(--mono);font-size:13px;color:var(--mon);white-space:pre-wrap}
-  #live .box.show{display:block}
-  #log{flex:1;overflow-y:auto;padding:10px 12px;font-family:var(--mono);font-size:12.5px;
-    line-height:1.5;white-space:pre-wrap;word-break:break-word}
-  .l{display:block}
-  .l .t{color:var(--dim)}
-  .l.tx .d{color:var(--tx)} .l.rx .d{color:var(--rx)} .l.resp .d{color:#c9d1d9}
-  .l.sys .d{color:var(--warn)} .l.er .d{color:var(--err)} .l.mon .d{color:var(--mon)}
-  footer{display:flex;gap:6px;padding:8px 12px;background:var(--panel);border-top:1px solid var(--line)}
-  #cmd{flex:1;background:var(--bg);color:var(--txt);border:1px solid var(--line);
-    border-radius:6px;padding:10px;font-family:var(--mono);font-size:14px}
-  .row{display:flex;gap:6px;align-items:center;width:100%}
-  .toggles{display:flex;gap:10px;padding:6px 12px;background:var(--panel);
-    border-bottom:1px solid var(--line);font-size:12px;color:var(--dim);flex-wrap:wrap;align-items:center}
-  .toggles label{display:flex;gap:4px;align-items:center;cursor:pointer}
-  .toggles input[type=text]{background:var(--bg);color:var(--txt);border:1px solid var(--line);
-    border-radius:4px;padding:3px 6px;font-family:var(--mono);font-size:11px;width:170px}
-  a.dl,button.mini{color:var(--acc);text-decoration:none;font-size:11px;background:none;border:none;padding:2px 4px;cursor:pointer}
+:root{--bg:#08111d;--panel:#101c2a;--panel2:#152438;--line:#253750;--txt:#f3f7fb;--dim:#91a4bb;--blue:#4ca6ff;--blue2:#1b70d1;--ok:#46d39a;--warn:#ffbe55;--err:#ff6b6b;--purple:#c6a7ff;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--shadow:0 14px 40px rgba(0,0,0,.24)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif}body{min-height:100dvh;background:radial-gradient(circle at 85% -5%,rgba(76,166,255,.18),transparent 30%),var(--bg)}button,input,select{font:inherit}button{min-height:44px;color:var(--txt);background:var(--panel2);border:1px solid var(--line);border-radius:13px;padding:10px 14px;cursor:pointer;font-weight:650}button:active{transform:translateY(1px)}button:disabled{opacity:.38;cursor:default}.primary{background:linear-gradient(135deg,var(--blue),var(--blue2));border:0;box-shadow:0 10px 28px rgba(47,129,247,.24)}.secondary{background:transparent}.live{color:var(--purple);border-color:#594478}.appbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(8,17,29,.9);backdrop-filter:blur(16px);border-bottom:1px solid rgba(145,164,187,.14)}.brand{display:flex;align-items:center;gap:10px;min-width:0}.brandmark{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:linear-gradient(145deg,#59b5ff,#185aaa);font-weight:900;letter-spacing:-1px}.brand h1{font-size:15px;line-height:1.05;margin:0}.brand small{display:block;color:var(--dim);font-size:10px;margin-top:4px}.grow{flex:1}.iconbtn{min-width:44px;padding:8px;font-size:18px}.status,.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;color:var(--dim);white-space:nowrap}.status:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}.status.on,.badge.confirmed{color:var(--ok);border-color:rgba(70,211,154,.4);background:rgba(70,211,154,.08)}.status.warn,.badge.candidate{color:var(--warn);border-color:rgba(255,190,85,.4);background:rgba(255,190,85,.08)}.status.err{color:var(--err);border-color:rgba(255,107,107,.4);background:rgba(255,107,107,.08)}.appmain{max-width:760px;width:100%;margin:0 auto;padding:14px 14px 104px}.page{display:none}.page.active{display:block}.hero{padding:18px;border:1px solid rgba(76,166,255,.24);border-radius:22px;background:linear-gradient(145deg,rgba(22,45,72,.96),rgba(13,27,43,.96));box-shadow:var(--shadow)}.eyebrow{color:var(--blue);font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}.hero h2{margin:7px 0 5px;font-size:25px;letter-spacing:-.03em}.hero p{margin:0;color:var(--dim);font-size:13px;line-height:1.45}.hero-actions{display:grid;grid-template-columns:1fr auto;gap:9px;margin-top:16px}.hero-actions #main{font-size:15px}.section-head{display:flex;align-items:end;justify-content:space-between;gap:10px;margin:22px 2px 10px}.section-head h2{font-size:17px;margin:0}.section-head p{font-size:11px;color:var(--dim);margin:3px 0 0}.fuel-switch{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:5px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}.fuel-switch button{min-height:40px;padding:7px 4px;border:0;background:transparent;color:var(--dim);font-size:12px}.fuel-switch button.active{color:#fff;background:var(--panel2);box-shadow:0 4px 14px rgba(0,0,0,.22)}.fuel-switch button[data-fuel="LPG"].active{background:#195ba0}.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.empty-state{grid-column:1/-1;padding:28px 18px;text-align:center;color:var(--dim);border:1px dashed var(--line);border-radius:18px}.card{min-height:118px;background:linear-gradient(145deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:18px;padding:14px;position:relative;overflow:hidden}.card:after{content:"";position:absolute;width:70px;height:70px;border-radius:50%;background:rgba(76,166,255,.08);right:-25px;top:-25px}.card.hero-card{grid-column:span 2;min-height:138px}.card .name{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}.card .value{font:700 25px/1.1 var(--mono);margin-top:12px;letter-spacing:-.04em}.card.hero-card .value{font-size:38px}.card .meta{font:10px var(--mono);color:var(--dim);margin-top:9px}.card .fresh{color:var(--ok)}.card.stale{border-color:rgba(255,190,85,.58)}.card.stale .fresh{color:var(--warn)}.quality-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.quality-item,.sheet{padding:15px;border:1px solid var(--line);border-radius:18px;background:var(--panel)}.quality-item strong{display:block;font:700 18px var(--mono)}.quality-item span{font-size:10px;color:var(--dim)}.sheet{margin-bottom:12px}.sheet h2,.sheet h3{margin:0 0 5px}.sheet p{margin:0;color:var(--dim);font-size:13px;line-height:1.5}.export-card{background:linear-gradient(145deg,#17395d,#10253d);border-color:#285887}.export-card button{width:100%;margin-top:16px;font-size:15px}.session-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin:12px 0}.session-stat{padding:15px;border-radius:16px;background:var(--panel2)}.session-stat strong{display:block;font:700 22px var(--mono)}.session-stat span{font-size:11px;color:var(--dim)}.bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0}.bar small{width:100%;color:var(--dim);line-height:1.4}input,select{min-height:44px;color:var(--txt);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:9px 11px}#did{width:130px}details{border-top:1px solid var(--line);margin-top:12px}summary{padding:14px 0;color:var(--dim);font-size:12px;cursor:pointer}#candidates{display:flex;gap:7px;flex-wrap:wrap}.badge{min-height:38px}#verdict .v,.v{margin:9px 0;padding:12px;border:1px solid var(--line);border-radius:14px;font-size:12px;background:var(--panel)}.v.PASS{border-color:var(--ok)}.v.FAIL{border-color:var(--err)}.v.INFO,.v.INCONCLUSIVE{border-color:var(--warn)}#log{height:42dvh;overflow:auto;padding:12px;border:1px solid var(--line);border-radius:16px;background:#07101a;font:11px/1.55 var(--mono);white-space:pre-wrap;word-break:break-word}.line .time{color:#60758e}.line.tx{color:#58a6ff}.line.rx{color:#7ee787}.line.err{color:var(--err)}.line.sys{color:var(--warn)}.line.sample{color:var(--purple)}.bottomnav{position:fixed;z-index:20;left:50%;bottom:max(10px,env(safe-area-inset-bottom));transform:translateX(-50%);display:grid;grid-template-columns:repeat(3,1fr);width:min(calc(100% - 24px),520px);padding:6px;border:1px solid rgba(145,164,187,.2);border-radius:20px;background:rgba(16,28,42,.94);backdrop-filter:blur(18px);box-shadow:var(--shadow)}.bottomnav button{border:0;background:transparent;color:var(--dim);font-size:11px;padding:7px 4px;min-height:52px}.bottomnav button span{display:block;font-size:18px;margin-bottom:2px}.bottomnav button.active{color:#fff;background:var(--panel2)}.desktop-only{display:none}@media(min-width:680px){.appmain{padding-top:22px}.cards{grid-template-columns:repeat(3,minmax(0,1fr))}.card.hero-card{grid-column:span 2}.desktop-only{display:inline-flex}}
+.fuel-switch{grid-template-columns:repeat(2,1fr);gap:6px}.fuel-switch button{min-height:48px;padding:8px;font-size:13px}.fuel-switch button.active{background:#8b4b18}.fuel-switch button[data-fuel="LPG"].active{background:#195ba0}.fuel-modal{position:fixed;z-index:50;inset:0;display:none;place-items:center;padding:20px;background:rgba(3,9,16,.76);backdrop-filter:blur(12px)}.fuel-modal.show{display:grid}.fuel-dialog{width:min(100%,420px);padding:22px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(145deg,#17283d,#0e1b2a);box-shadow:0 24px 70px rgba(0,0,0,.5)}.fuel-dialog .eyebrow{text-align:center}.fuel-dialog h2{text-align:center;margin:8px 0 6px;font-size:24px}.fuel-dialog p{text-align:center;color:var(--dim);font-size:13px;margin:0 0 18px}.fuel-dialog .fuel-switch button{min-height:58px;font-size:15px}
 </style>
 </head>
 <body>
-<header>
-  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.5.2</span></h1>
-  <span id="st" class="status">rozłączony</span>
-  <span id="dev" class="status" style="display:none"></span>
-  <span id="logstate" class="status" style="display:none"></span>
+<header class="appbar">
+  <div class="brand"><div class="brandmark">V</div><div><h1>XC70 Drive Data</h1><small>T6 · 2014 · read-only v0.7.0</small></div></div>
+  <span class="grow"></span>
+  <span id="status" class="status">offline</span>
+  <span id="device" class="status desktop-only" hidden></span>
+  <button id="quickExport" class="iconbtn" aria-label="Eksportuj sesję" title="Eksportuj sesję">⇩</button>
 </header>
+<main class="appmain">
+  <section class="page active" data-page-panel="live">
+    <div class="hero">
+      <div class="eyebrow">Bieżąca sesja</div>
+      <h2 id="driveHeadline">Gotowy do odczytu</h2>
+      <p id="driveSubline">Połącz adapter, a aplikacja sama sprawdzi OBD i uruchomi bezpieczny monitoring.</p>
+      <div class="hero-actions"><button id="main" class="primary">Połącz z autem</button><button id="monitorToggle" class="live" disabled>Monitor</button></div>
+    </div>
+    <div class="section-head"><div><h2>Paliwo</h2><p>Dotknij właściwego paliwa w momencie przełączenia</p></div><span id="fuel" class="status warn">WYBIERZ</span></div>
+    <div class="fuel-switch">
+      <button data-fuel="BENZYNA">Benzyna</button><button data-fuel="LPG">LPG</button>
+    </div>
+    <div class="section-head"><div><h2>Dane na żywo</h2><p>Wartości nieodświeżane są oznaczane jako STALE</p></div></div>
+    <div id="cards" class="cards"><div class="empty-state">Po połączeniu pojawią się tutaj zweryfikowane parametry silnika.</div></div>
+    <div id="verdict"></div>
+  </section>
 
-<div class="bar" style="justify-content:center">
-  <button id="btnMain" class="primary" style="font-size:15px;padding:12px 18px;flex:1;max-width:520px">🚀 Połącz i diagnozuj</button>
+  <section class="page" data-page-panel="session">
+    <div class="section-head"><div><h2>Sesja i eksport</h2><p>Kompletny zapis RAW-first do późniejszego dekodowania</p></div></div>
+    <div class="sheet export-card"><h2>Twoje dane są lokalne</h2><p>Eksport zawiera surowe fragmenty BLE, wymiany, próbki, jakość i znaczniki paliwa. VIN nie jest dodawany do manifestu.</p><button id="export" class="primary">Eksportuj sesję .jsonl</button></div>
+    <div class="session-stats">
+      <div class="session-stat"><strong id="sessionTime">00:00</strong><span>czas sesji</span></div>
+      <div class="session-stat"><strong id="sampleCount">0</strong><span>próbki</span></div>
+      <div class="session-stat"><strong id="exchangeCount">0</strong><span>wymiany</span></div>
+      <div class="session-stat"><strong id="dataState">—</strong><span>integralność</span></div>
+    </div>
+    <div class="sheet"><h3>Stan transportu</h3><p id="integrity">Brak zdarzeń w tej sesji.</p></div>
+    <div class="bar"><span id="session">sesja: —</span><span class="grow"></span><button id="newSession">Nowa sesja</button></div>
+  </section>
+
+  <section class="page" data-page-panel="lab">
+    <div class="section-head"><div><h2>Laboratorium</h2><p>DID-y, kandydaci i surowy dziennik</p></div></div>
+    <div class="sheet">
+      <h3>Odczyt UDS DID</h3><p>Wyłącznie ReadDataByIdentifier. ECM 7E0→7E8 lub TCM 7E1→7E9.</p>
+      <div class="bar"><select id="endpoint"><option value="ECM">ECM 7E0</option><option value="TCM">TCM 7E1</option></select><input id="did" maxlength="4" placeholder="np. D91C" inputmode="text"><button id="readDid" class="live">Czytaj</button></div>
+      <div class="bar"><button data-did="D91C" data-ecu="ECM">D91C · RPM</button><button data-did="D9C1" data-ecu="ECM">D9C1 · Rail</button></div>
+      <details><summary>Kandydaci niepotwierdzeni</summary><span id="candidates"></span></details>
+    </div>
+    <div class="sheet"><div class="bar"><strong>Surowy dziennik</strong><span class="grow"></span><label style="font-size:11px;color:var(--dim)"><input type="checkbox" id="autoscroll" checked> scroll</label><button id="clear">Wyczyść</button></div><div id="log"></div></div>
+  </section>
+</main>
+
+<nav class="bottomnav" aria-label="Główna nawigacja">
+  <button class="active" data-page="live"><span>◉</span>Live</button>
+  <button data-page="session"><span>▤</span>Sesja</button>
+  <button data-page="lab"><span>⌁</span>Lab</button>
+</nav>
+
+<div id="fuelPrompt" class="fuel-modal" role="dialog" aria-modal="true" aria-labelledby="fuelQuestion">
+  <div class="fuel-dialog">
+    <div class="eyebrow">Paliwo na start</div>
+    <h2 id="fuelQuestion">Na czym teraz pracuje silnik?</h2>
+    <p>Wybierz raz. Potem przełączasz paliwo jednym dotknięciem na ekranie Live.</p>
+    <div class="fuel-switch"><button data-fuel="BENZYNA">Benzyna</button><button data-fuel="LPG">LPG</button></div>
+  </div>
 </div>
-
-<div class="bar">
-  <small>PALIWO — klikaj w chwili przełączenia (jedyna rzecz do zrobienia ręcznie)</small>
-  <span id="fuelchip" class="status">paliwo: —</span>
-  <button class="mini" id="btnFuelP" style="font-size:14px">⛽ Benzyna</button>
-  <button class="mini" id="btnFuelG" style="font-size:14px">🔵 LPG</button>
-  <button class="mini" id="btnFuelClr">✖</button>
-</div>
-
-<details style="margin:0 12px">
-  <summary style="color:var(--dim);font-size:12px;padding:6px 0;cursor:pointer">⚙ Zaawansowane (pojedyncze makra)</summary>
-  <div class="bar" style="border:0;padding-left:0">
-    <small>29-bit A→B→C oraz silnik D/E/F — normalnie robi to auto-przycisk</small>
-    <button class="macro" data-macro="A" disabled>A · Setup</button>
-    <button class="macro" data-macro="B" disabled>B · 11-bit</button>
-    <button class="macro" data-macro="C" disabled>C · 29-bit</button>
-    <button class="macro" data-macro="X" disabled>X · Cross</button>
-    <button class="macro" data-macro="Z" disabled>Z · Cleanup</button>
-    <button class="live" id="btnMon" disabled>D · Monitor ▶</button>
-    <button class="macro" data-macro="E" disabled>E · DTC/06</button>
-    <button class="macro" data-macro="F" disabled>F · PIDs</button>
-  </div>
-  <div class="bar" style="border:0;padding-left:0">
-    <small>🎯 Volvo DID (UDS 22 @ 7E0) — POTWIERDZONY transport z logu Car Scanner. Wpisz DID (4 hex) → Czytaj.
-      Dekod: hex + float32 (Volvo P3 = IEEE754) + int. Potwierdzone: D91C=RPM, D9C1=rail.</small>
-    <input type="text" id="didin" placeholder="np. D91C" style="background:var(--bg);color:var(--txt);border:1px solid var(--line);border-radius:4px;padding:4px 6px;font-family:var(--mono);font-size:12px;width:90px">
-    <button class="live" id="btnDid">Czytaj DID</button>
-    <span style="width:100%;height:0"></span>
-    <button class="mini" data-did="D91C">D91C RPM</button>
-    <button class="mini" data-did="D9C1">D9C1 rail</button>
-    <button class="mini" data-did="DA03">DA03</button>
-    <button class="mini" data-did="DA04">DA04</button>
-    <button class="mini" data-did="DAB6">DAB6</button>
-  </div>
-  <div class="bar" style="border:0;padding-left:0">
-    <small>🧭 Sensory P3 (potwierdzone z arkusza, właściwe równania+header). Klik = odczyt na aucie. ⚠ misfire per-cyl NIE MA w arkuszu.</small>
-    <div id="p3sensors" style="display:flex;gap:6px;flex-wrap:wrap;width:100%"></div>
-  </div>
-</details>
-
-<div id="live"><div class="box" id="livebox"></div></div>
-<div id="verdict"></div>
-
-<div class="toggles">
-  <label><input type="checkbox" id="cr" checked> CR</label>
-  <label><input type="checkbox" id="autoscroll" checked> scroll</label>
-  <label><input type="checkbox" id="hexview"> HEX RX</label>
-  <label title="EKSPERYMENTALNY — adres/serwis/PID NIEpotwierdzone dla XC70 T6. Serwis musi być A6 lub AE.">
-    Volvo payload (exp):<input type="text" id="req29" placeholder="8 bajtów hex — tylko zweryfikowany payload"></label>
-  <span style="flex:1"></span>
-  <span id="sesslabel" style="font-size:11px">sesja: —</span>
-  <button class="mini" id="btnNewSess">nowa sesja</button>
-  <a class="dl" id="dlLog" href="#">⬇ eksport sesji</a>
-  <button class="mini" id="btnDelSess">usuń sesję</button>
-  <button class="mini" id="btnClear">wyczyść widok</button>
-</div>
-
-<div id="log"></div>
-
-<footer>
-  <div class="row">
-    <input id="cmd" placeholder="komenda np. 0100  lub  ATSH 0F FF FE" autocomplete="off" autocapitalize="characters" spellcheck="false">
-    <button id="btnSend" class="primary" disabled>Wyślij</button>
-  </div>
-</footer>
 
 <script>
 "use strict";
-/* ============================================================================
-   Volvo XC70 P3 — Web Bluetooth ELM327 console  v0.4.3
-   Bazuje na v0.4.2 (audyty 1-6) + z sesji na aucie 21.07:
-   A) profil "IOS-Vlink" (svc e7810a71, jedna charakterystyka write=notify) — nie heurystyka
-      + dłuższe timeouty i settle po ATSP (znika STOPPED/TIMEOUT z makra C)
-   B) MONITOR LIVE (D): dekodowane RPM/lambda/STFT/LTFT/MAP/load/ECT — pętla ze STOP,
-      pod test reakcji sondy na blip gazu (przed/po wymianie DENSO)
-   Dodatkowo pod lepsze testy:
-   E) DTC (stored 03 + pending 07) z dekodem P-code + zrzut Mode 06 (możliwe misfire per cyl!)
-   F) Supported PIDs (bitmapy 0100/20/40/60) — wiesz co auto realnie wystawia
-   Zasada: tylko odczyty. Bez zmian zapisu.
-   ============================================================================ */
 
-const $ = s => document.querySelector(s);
-const logEl=$('#log'), verdictEl=$('#verdict'), liveBox=$('#livebox');
+const APP_VERSION="0.7.0";
+const DB_NAME="xc70_obd_v060";
+const CHUNK_SIZE=20, DEFAULT_TIMEOUT=3500, POLL_TIMEOUT=1900, DRAIN_QUIET_MS=350, DRAIN_MAX_MS=1800;
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const enc=new TextEncoder(), dec=new TextDecoder();
-const APP_VERSION='0.5.2', CHUNK=20, DOM_MAX=500;
-const T_DEFAULT=3500, T_ATZ=4000, T_POLL=1600;   // dłuższe timeouty (fix STOPPED/TIMEOUT)
+const logEl=$("#log"), cardsEl=$("#cards"), verdictEl=$("#verdict");
+const appT0=performance.now(), mono=()=>performance.now()-appT0, wall=()=>new Date().toISOString();
+const uuid=()=>crypto.randomUUID?crypto.randomUUID():"sess-"+Date.now()+"-"+Math.random().toString(16).slice(2);
 
-// ---- BLE ----
-let device=null, server=null, writeChar=null, notifyChar=null, svcUuid=null, adapterProfile='(none)';
-// ---- sesja / sekwencja ----
-let sessionId=null, seq=0, sessionStartedWall=null, sessionStartedMono=null;
-const uuid=()=> (crypto.randomUUID? crypto.randomUUID()
-  : 'sess-'+Math.random().toString(16).slice(2)+'-'+performance.now().toFixed(0));
-let requestedState={protocol:null,header:null,cra:null,caf:null};
-let confirmedState ={protocol:null,header:null,cra:null,caf:null};
-function resetAdapterState(){ requestedState={protocol:null,header:null,cra:null,caf:null};
-  confirmedState={protocol:null,header:null,cra:null,caf:null}; }
-let logErrors=0, logDegraded=false;
+let device=null,server=null,writeChar=null,notifyChar=null,connected=false,monitoring=false,autoRunning=false,exporting=false;
+let adapterProfile="unknown",serviceUuid=null,sessionId=null,sessionStartedWall=null,sessionStartedMono=0,seq=0;
+let queue=[],inflight=null,rxBuffer="",responseTimer=null,drain=null;
+let adapterState={protocol:null,header:null,receiver:null,caf:null,headers:null};
+let fuelState=null, lastSignals=new Map(), sessionSampleCount=0, sessionExchangeCount=0, counters={timeouts:0,late:0,orphan:0,mismatch:0,bufferFull:0,rejected:0};
 
-const t0=performance.now();
-const mono=()=>performance.now()-t0;
-const wall=()=>new Date().toISOString();
-function hhmmss(){const d=new Date();return d.toLocaleTimeString('pl-PL',{hour12:false})+'.'+String(d.getMilliseconds()).padStart(3,'0');}
+const DID_DEFS={
+  "ECM:D91C":{signal_id:"powertrain.engine.speed.enhanced",name:"RPM enhanced",codec:"float32_be",unit:"rpm",confidence:"confirmed_vehicle",min:0,max:8000},
+  "ECM:D9C1":{signal_id:"powertrain.fuel.rail_pressure.enhanced",name:"Rail enhanced",codec:"float32_be",unit:"kPa",confidence:"confirmed_vehicle",min:0,max:30000}
+};
+const CANDIDATES=[
+  {ecu:"ECM",did:"D9DC",name:"Oil temp"},{ecu:"ECM",did:"D9F9",name:"Exhaust T2"},
+  {ecu:"ECM",did:"D916",name:"Air flow"},{ecu:"ECM",did:"D99C",name:"Fuel temp"},
+  {ecu:"ECM",did:"DC02",name:"Fan"},{ecu:"ECM",did:"D900",name:"A/C pressure"},
+  {ecu:"TCM",did:"DD8D",name:"Engine torque"},{ecu:"TCM",did:"DD81",name:"Gear"}
+];
+const ENDPOINTS={ECM:{request:"7E0",response:"7E8"},TCM:{request:"7E1",response:"7E9"}};
+const PID_LEN={"03":1,"04":1,"05":1,"06":1,"07":1,"0A":1,"0B":1,"0C":2,"0F":1,"11":1,"22":2,"23":2,"24":4,"34":4,"42":2};
+const MONITOR_PIDS=new Set(Object.keys(PID_LEN));
 
-/* ---------------- IndexedDB ---------------- */
-let db=null, pendingWrites=new Set();
-function idbOpen(){return new Promise(res=>{try{
-  const rq=indexedDB.open('volvo_obd_log',2);
-  rq.onupgradeneeded=e=>{const d=e.target.result;
-    for(const s of ['chunk','exchange']) if(!d.objectStoreNames.contains(s)){
-      const st=d.createObjectStore(s,{autoIncrement:true}); st.createIndex('session','session',{unique:false});
-    }};
-  rq.onsuccess=e=>{db=e.target.result; res(true);};
-  rq.onerror=()=>{db=null; res(false);};
-}catch(e){db=null;res(false);}});}
-function idbPut(store,obj){
-  if(!db) return Promise.resolve(false);
-  let finish; const done=new Promise(r=>{finish=r;}); pendingWrites.add(done);
-  let settled=false; const settle=ok=>{if(settled)return;settled=true;finish(ok);};
-  try{ const tx=db.transaction(store,'readwrite');
-    tx.oncomplete=()=>settle(true); tx.onerror=tx.onabort=()=>{flagLogError();settle(false);};
-    tx.objectStore(store).add(obj);
-  }catch(e){ flagLogError(); settle(false); }
-  done.then(()=>pendingWrites.delete(done)); return done;
-}
-async function flushWrites(){ let i=0; while(pendingWrites.size && i++<50) await Promise.all([...pendingWrites]); }
-function flagLogError(){ logErrors++; if(!logDegraded && logErrors>=3){ logDegraded=true;
-  setLogState('LOG_DEGRADED','warn'); errline('⚠ IndexedDB: utrata zapisu (quota/tx). Log może być niepełny.'); } }
-async function idbAllBySession(store,sid){return new Promise(res=>{
-  if(!db){res([]);return;}
-  try{const tx=db.transaction(store,'readonly');const rq=tx.objectStore(store).index('session').getAll(IDBKeyRange.only(sid));
-    rq.onsuccess=()=>res(rq.result||[]); rq.onerror=()=>res([]);}catch(e){res([]);}});}
-async function idbDeleteSession(sid){for(const store of ['chunk','exchange']){await new Promise(r=>{
-  try{const tx=db.transaction(store,'readwrite');const idx=tx.objectStore(store).index('session');
-    const rq=idx.openCursor(IDBKeyRange.only(sid));
-    rq.onsuccess=e=>{const c=e.target.result; if(c){ c.delete(); c.continue(); } else r(); };
-    rq.onerror=()=>r();}catch(e){r();}});}}
-
-/* ---------------- widok ---------------- */
-function view(kind,dir,text){
-  const div=document.createElement('span'); div.className='l '+kind;
-  div.innerHTML=`<span class="t">${hhmmss()} ${dir}</span> <span class="d"></span>`;
-  div.querySelector('.d').textContent=text; logEl.appendChild(div);
-  while(logEl.childElementCount>DOM_MAX) logEl.removeChild(logEl.firstChild);
-  if($('#autoscroll').checked) logEl.scrollTop=logEl.scrollHeight;
-}
-function sys(t){ view('sys','··',t); idbPut('exchange',{session:sessionId,seq:++seq,lvl:'SYS',ts_mono:mono(),ts_wall:wall(),text:t}); }
-function errline(t){ view('er','!!',t); idbPut('exchange',{session:sessionId,seq:++seq,lvl:'ERR',ts_mono:mono(),ts_wall:wall(),text:t}); }
-function monline(t){ view('mon','◆',t); idbPut('exchange',{session:sessionId,seq:++seq,lvl:'MONITOR',ts_mono:mono(),ts_wall:wall(),text:t}); }
-
-function logChunk(dir,bytes,txt,exId,frag,sess){
-  const hex=[...bytes].map(b=>b.toString(16).padStart(2,'0')).join(' ');
-  idbPut('chunk',{session:sess||sessionId,seq:++seq,ts_mono:mono(),ts_wall:wall(),
-    dir,transport:'ble',exchange_id:exId??null,frag:frag??null,bytes_hex:hex,text:txt});
-  if(dir==='RX'){ const shown=$('#hexview').checked?(txt.replace(/\r/g,'⏎')+'  ['+hex+']'):txt.replace(/\r/g,'⏎'); view('rx','RX',shown); }
-}
-function logExchange(ex){
-  idbPut('exchange',{session:ex.session||sessionId,seq:++seq,lvl:'EXCHANGE',exchange_id:ex.id,
-    ts_mono_start:ex.tStart,ts_mono_end:mono(),ts_wall:wall(),
-    command:ex.cmd,response_text:ex.text,status:ex.status,adapter_state:JSON.stringify(confirmedState)});
-}
-
-/* ---------------- klasyfikacja ---------------- */
-const NRC={0x10:'generalReject',0x11:'serviceNotSupported',0x12:'subFuncNotSupported',
-  0x13:'wrongLength',0x22:'conditionsNotCorrect',0x31:'requestOutOfRange',
-  0x33:'securityAccessDenied',0x35:'invalidKey',0x78:'responsePending'};
-function classify(text){
-  const u=(text||'').toUpperCase();
-  if(u.includes('?')) return {status:'AT_UNSUPPORTED'};
-  if(u.includes('UNABLE TO CONNECT')) return {status:'NO_CONNECT'};
-  if(u.includes('NO DATA')) return {status:'NO_DATA'};
-  if(u.includes('BUFFER FULL')) return {status:'BUFFER_FULL'};
-  if(u.includes('CAN ERROR')||u.includes('BUS ERROR')||u.includes('RX ERROR')) return {status:'BUS_ERROR'};
-  if(u.includes('STOPPED')) return {status:'STOPPED'};
-  const neg=u.replace(/[>\r\n]/g,' ').match(/\b7F\s*([0-9A-F]{2})\s*([0-9A-F]{2})\b/);
-  if(neg){ const nrc=parseInt(neg[2],16); return {status:'NEGATIVE_RESPONSE',service:neg[1],nrc:neg[2],nrcName:NRC[nrc]||'?'}; }
-  if(u.includes('ERROR')) return {status:'ERROR'};
-  if(/[0-9A-F]{2}(\s|\r|>|$)/.test(u)) return {status:'OK_DATA'};
-  if(u.includes('OK')) return {status:'OK'};
-  return {status:'OK'};
-}
-function parseExtFrames(text){
-  const frames=[];
-  for(const raw of (text||'').split(/[\r\n]+/)){
-    const s=raw.replace(/>/g,'').trim(); if(!s) continue;
-    let id=null, rest='';
-    const compact=s.match(/^([0-9A-Fa-f]{8})\s+(.+)$/);
-    if(compact){ id=compact[1].toUpperCase(); rest=compact[2]; }
-    else{ const toks=s.split(/\s+/);
-      if(toks.length>=7 && toks.slice(0,4).every(t=>/^[0-9A-Fa-f]{2}$/.test(t))){
-        id=toks.slice(0,4).join('').toUpperCase(); rest=toks.slice(4).join(' '); } }
-    if(!id) continue;
-    const payload=rest.split(/\s+/).filter(t=>/^[0-9A-Fa-f]{2}$/.test(t)).map(t=>t.toUpperCase());
-    frames.push({canId:id,payload,raw:s});
+/* Bezpieczeństwo: każda komenda, także wywołana z kodu, przechodzi przez allowlistę. */
+function commandPolicy(raw){
+  const cmd=String(raw||"").trim().toUpperCase().replace(/\s+/g," ");
+  const compact=cmd.replace(/\s/g,"");
+  const atAllowed=[/^ATZ$/,/^ATI$/,/^AT@1$/,/^ATE[01]$/,/^ATL[01]$/,/^ATS[01]$/,/^ATH[01]$/,/^ATCAF[01]$/,/^ATSP[06]$/,/^ATDP$/,/^ATDPN$/,/^ATCRA(?: 7E[89])?$/,/^ATSH 7E[01]$/];
+  if(cmd.startsWith("AT")) return {allowed:atAllowed.some(r=>r.test(cmd)),cmd,kind:"AT"};
+  if(["03","06","07","0902","0904","0906"].includes(compact)) return {allowed:true,cmd:compact,kind:"OBD"};
+  if(/^01(?:[0-9A-F]{2})+$/.test(compact)){
+    const pids=compact.slice(2).match(/../g)||[];
+    return {allowed:pids.length>0&&pids.every(p=>MONITOR_PIDS.has(p)||["00","20","40","60"].includes(p)),cmd:compact,kind:"OBD"};
   }
-  return frames;
-}
-function matchVolvoResponse(text,p,meta){
-  const frames=parseExtFrames(text);
-  const positiveService=((parseInt(p.service,16)+0x40)&0xFF).toString(16).padStart(2,'0').toUpperCase();
-  const positive=frames.find(f=>f.payload.length>=3 && f.payload[1]===p.addr && f.payload[2]===positiveService);
-  const negative=meta&&meta.status==='NEGATIVE_RESPONSE'&&meta.service===p.service&&frames.length>0;
-  return {frames,positive,negative};
+  if(/^22[0-9A-F]{4}$/.test(compact)&&["7E0","7E1"].includes(adapterState.header)) return {allowed:true,cmd:compact,kind:"UDS"};
+  return {allowed:false,cmd,kind:"REJECTED"};
 }
 
-/* ---------------- parser standardowego OBD (Mode 01/03/07/06) ---------------- */
-// zwraca bajty danych po "41 <pid>" z ramki 7E8 (ECM) — obsługuje spacje/nagłówki
-function parseObd(text,pid){
-  const u=(text||'').toUpperCase().replace(/[\r>]/g,' ');
-  for(const hdr of ['7E8','7E9','']){
-    const re=new RegExp((hdr?hdr+'\\s+':'')+'([0-9A-F]{2})\\s+41\\s+'+pid+'((?:\\s+[0-9A-F]{2})+)');
-    const m=u.match(re);
-    if(m){ const ll=parseInt(m[1],16);
-      const bytes=m[2].trim().split(/\s+/).map(x=>parseInt(x,16));
-      return bytes.slice(0,Math.max(0,ll-2)); }
-  }
-  return null;
+/* IndexedDB: surowe fragmenty, pełne wymiany, próbki i zdarzenia. */
+let db=null,pendingWrites=new Set();
+function dbOpen(){return new Promise(resolve=>{try{
+  const req=indexedDB.open(DB_NAME,3);
+  req.onupgradeneeded=e=>{const d=e.target.result;for(const name of ["chunk","exchange","sample","event"]){if(!d.objectStoreNames.contains(name)){const s=d.createObjectStore(name,{autoIncrement:true});s.createIndex("session","session",{unique:false});}}};
+  req.onsuccess=e=>{db=e.target.result;resolve(true)};req.onerror=()=>resolve(false);
+}catch(_){resolve(false)}})}
+function dbPut(store,obj){if(!db)return Promise.resolve(false);let finish;const promise=new Promise(r=>finish=r);pendingWrites.add(promise);try{const tx=db.transaction(store,"readwrite");tx.oncomplete=()=>finish(true);tx.onerror=tx.onabort=()=>finish(false);tx.objectStore(store).add(obj)}catch(_){finish(false)}promise.finally(()=>pendingWrites.delete(promise));return promise}
+async function flushWrites(maxMs=5000){const end=performance.now()+maxMs;while(pendingWrites.size&&performance.now()<end)await Promise.allSettled([...pendingWrites]);return pendingWrites.size===0}
+function dbAll(store){return new Promise(resolve=>{if(!db)return resolve([]);try{const req=db.transaction(store,"readonly").objectStore(store).index("session").getAll(IDBKeyRange.only(sessionId));req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>resolve([])}catch(_){resolve([])}})}
+
+function stamp(){const d=new Date();return d.toLocaleTimeString("pl-PL",{hour12:false})+"."+String(d.getMilliseconds()).padStart(3,"0")}
+function view(kind,text){const row=document.createElement("div");row.className="line "+kind;row.innerHTML='<span class="time"></span> <span class="body"></span>';row.querySelector(".time").textContent=stamp();row.querySelector(".body").textContent=text;logEl.appendChild(row);while(logEl.childElementCount>600)logEl.firstChild.remove();if($("#autoscroll").checked)logEl.scrollTop=logEl.scrollHeight}
+function event(level,text,extra={}){view(level==="ERROR"?"err":"sys",text);dbPut("event",{session:sessionId,seq:++seq,ts_mono:mono(),ts_wall:wall(),level,text,...extra})}
+function logChunk(direction,bytes,text,exchangeId){dbPut("chunk",{session:sessionId,seq:++seq,ts_mono:mono(),ts_wall:wall(),direction,transport:"ble",exchange_id:exchangeId??null,bytes_hex:[...bytes].map(x=>x.toString(16).padStart(2,"0")).join(" "),text});view(direction.toLowerCase(),direction+" "+text.replace(/\r/g,"↵"))}
+function logExchange(ex){sessionExchangeCount++;dbPut("exchange",{session:sessionId,seq:++seq,exchange_id:ex.id,ts_mono_start:ex.started,ts_mono_end:mono(),ts_wall:wall(),command:ex.cmd,kind:ex.kind,endpoint:ex.endpoint||null,response_text:ex.text||"",response_hex:textBytes(ex.text||""),status:ex.status,correlation:ex.correlation||null,attempt:ex.attempt||1,adapter_state:{...adapterState}})}
+function textBytes(s){return[...enc.encode(s)].map(x=>x.toString(16).padStart(2,"0")).join(" ")}
+
+function setStatus(text,kind=""){const el=$("#status");el.textContent=text;el.className="status "+kind}
+function refresh(){
+  const busy=autoRunning||monitoring||!!inflight||queue.length>0||!!drain;
+  $("#main").textContent=connected?"Zakończ i rozłącz":"Połącz z autem";
+  $("#readDid").disabled=!connected||busy;$("#newSession").disabled=busy;
+  $("#monitorToggle").disabled=!connected||(!monitoring&&(autoRunning||!!inflight||queue.length>0||!!drain));
+  $("#monitorToggle").textContent=monitoring?"Pauza":"Monitor";
+  $("#quickExport").disabled=autoRunning||exporting;$("#export").disabled=autoRunning||exporting;
+  $("#driveHeadline").textContent=monitoring?"Dane płyną":autoRunning?"Sprawdzam samochód…":connected?"Połączono z XC70":"Gotowy do odczytu";
+  $("#driveSubline").textContent=monitoring?"Pokazujemy wyłącznie próbki z poprawnie skorelowanych odpowiedzi.":connected?"Możesz uruchomić monitor albo przejść do Lab i odczytać DID.":"Połącz adapter, a aplikacja sprawdzi OBD i uruchomi bezpieczny monitoring.";
+  updateSessionUi();
 }
-// długości danych PID (bajty) — do multi-PID walk
-const PID_LEN={'04':1,'05':1,'06':1,'07':1,'0A':1,'0B':1,'0C':2,'0F':1,'10':2,'11':1,'22':2,'23':2,'24':4,'34':4,'42':2,'03':1};
-// parser MULTI-PID: jedna odpowiedź "41 <pid><data><pid><data>..." → mapa pid->bajty
-// sklej ISO-TP: usuń nagłówek 7E8 i bajty PCI (single 0X / first 1X / consec 2X) → ciągły payload
-function parseIsoTp(text){
-  const lines=(text||'').toUpperCase().replace(/>/g,'').split(/[\r\n]+/).map(s=>s.trim()).filter(Boolean);
-  let out=[];
-  for(const l of lines){
-    const bytes=l.split(/\s+/).filter(t=>/^[0-9A-F]{2}$/.test(t)).map(t=>parseInt(t,16)); // 7E8 (3 znaki) pominięte
-    if(!bytes.length) continue;
-    const pci=bytes[0]&0xF0;
-    if(pci===0x10) out=out.concat(bytes.slice(2));        // first frame: PCI = 1X LL (2 bajty)
-    else if(pci===0x20) out=out.concat(bytes.slice(1));   // consecutive: PCI = 2X (1 bajt)
-    else if(pci===0x00) out=out.concat(bytes.slice(1));   // single: PCI = 0X (1 bajt)
-    else out=out.concat(bytes);
-  }
-  return out.map(b=>b.toString(16).padStart(2,'0')).join(' ');
-}
-function parseMulti(text){
-  const u=(text||'').toUpperCase().replace(/[\r>]/g,' ');
-  const m=u.match(/\b41((?:\s+[0-9A-F]{2})+)/);   // po ATCRA 7E8 jest jedno 41
-  if(!m) return {};
-  const bytes=m[1].trim().split(/\s+/).map(x=>parseInt(x,16));
-  const out={}; let i=0;
+
+/* Klasyfikacja i korelacja są osobnymi etapami. Regex nie nadaje już werdyktu danych. */
+const NRC={"10":"generalReject","11":"serviceNotSupported","12":"subFunctionNotSupported","13":"incorrectLength","22":"conditionsNotCorrect","31":"requestOutOfRange","33":"securityAccessDenied","78":"responsePending"};
+function cleanHex(text){return (text||"").toUpperCase().split(/[\r\n>]+/).map(x=>x.trim()).filter(Boolean).filter(x=>!/^SEARCHING/.test(x)&&!/^BUS INIT/.test(x)).join(" ").replace(/[^0-9A-F]/g,"")}
+function classify(text){const u=(text||"").toUpperCase();if(u.includes("BUFFER FULL")){counters.bufferFull++;return{status:"BUFFER_FULL"}}if(u.includes("NO DATA"))return{status:"NO_DATA"};if(u.includes("UNABLE TO CONNECT"))return{status:"NO_CONNECT"};if(u.includes("CAN ERROR")||u.includes("BUS ERROR")||u.includes("RX ERROR"))return{status:"BUS_ERROR"};if(u.includes("STOPPED"))return{status:"STOPPED"};if(u.includes("?"))return{status:"AT_UNSUPPORTED"};const h=cleanHex(text),m=h.match(/7F([0-9A-F]{2})([0-9A-F]{2})/);if(m)return{status:"NEGATIVE_RESPONSE",service:m[1],nrc:m[2],nrcName:NRC[m[2]]||"unknown"};if(u.includes("ERROR"))return{status:"ERROR"};return{status:"RESPONSE"}}
+function expectation(cmd){const c=cmd.replace(/\s/g,"");if(c.startsWith("AT"))return{kind:"AT"};if(c==="03")return{kind:"OBD",positive:["43"]};if(c==="06")return{kind:"OBD",positive:["46"]};if(c==="07")return{kind:"OBD",positive:["47"]};if(c.startsWith("09"))return{kind:"OBD",positive:["49"+c.slice(2,4)]};if(c.startsWith("01"))return{kind:"OBD",positive:(c.slice(2).match(/../g)||[]).map(p=>"41"+p)};if(c.startsWith("22"))return{kind:"UDS",positive:["62"+c.slice(2,6)],negativeService:"22"};return{kind:"UNKNOWN",positive:[]}}
+function correlate(cmd,text,meta){const exp=expectation(cmd);if(exp.kind==="AT")return{pass:["RESPONSE","AT_UNSUPPORTED"].includes(meta.status),reason:"adapter_command"};const h=cleanHex(text);if(meta.status==="NEGATIVE_RESPONSE")return{pass:meta.service===exp.negativeService||exp.kind==="OBD",reason:"negative_response",nrc:meta.nrc};const hits=(exp.positive||[]).filter(x=>h.includes(x));return{pass:hits.length>0,reason:hits.length?"positive_signature":"signature_missing",expected:exp.positive,observed:h.slice(0,160)}}
+
+function enqueue(raw,timeoutMs=DEFAULT_TIMEOUT,options={}){return new Promise(resolve=>{const policy=commandPolicy(raw);if(!policy.allowed){counters.rejected++;event("ERROR","COMMAND_REJECTED: "+policy.cmd,{reason:"read_only_allowlist"});resolve({cmd:policy.cmd,status:"COMMAND_REJECTED",text:"",correlation:{pass:false,reason:"policy"}});return}if(!writeChar){resolve({cmd:policy.cmd,status:"DISCONNECTED",text:""});return}queue.push({cmd:policy.cmd,kind:policy.kind,timeoutMs,resolve,endpoint:options.endpoint||null,attempt:options.attempt||1});pump();refresh()})}
+async function pump(){if(inflight||drain||!queue.length||!writeChar)return;const ex=queue.shift();inflight=ex;ex.id=++seq;ex.started=mono();rxBuffer="";updateRequestedState(ex.cmd);try{await writeBytes(ex.cmd+"\r",ex.id);view("tx","TX "+ex.cmd);responseTimer=setTimeout(()=>timeoutExchange(ex),ex.timeoutMs)}catch(err){finishExchange(ex,"WRITE_ERROR",String(err.message||err),{pass:false,reason:"write_error"})}refresh()}
+function timeoutExchange(ex){if(inflight!==ex)return;counters.timeouts++;inflight=null;responseTimer=null;ex.text=rxBuffer;rxBuffer="";ex.status="TIMEOUT";ex.correlation={pass:false,reason:"timeout"};logExchange(ex);view("err","TIMEOUT "+ex.cmd);ex.resolve(publicResult(ex));startDrain(ex.id);refresh()}
+function startDrain(previousExchangeId){let quietTimer,maxTimer;const finish=reason=>{if(!drain)return;clearTimeout(quietTimer);clearTimeout(maxTimer);const d=drain;drain=null;if(d.text){counters.late++;event("ERROR","LATE_RESPONSE po exchange "+previousExchangeId,{reason,raw_text:d.text})}pump();refresh()};drain={previousExchangeId,text:"",touch(){clearTimeout(quietTimer);quietTimer=setTimeout(()=>finish("quiet_gap"),DRAIN_QUIET_MS)}};maxTimer=setTimeout(()=>finish("max_deadline"),DRAIN_MAX_MS);drain.touch()}
+function finishExchange(ex,status,text,correlation,meta=null){if(responseTimer)clearTimeout(responseTimer);responseTimer=null;if(inflight===ex)inflight=null;ex.status=status;ex.text=text;ex.correlation=correlation;ex.meta=meta;logExchange(ex);const mark=correlation&&correlation.pass?"PASS":"REJECT";view(correlation&&correlation.pass?"rx":"err",`${mark} ${ex.cmd} [${status}] ${text.replace(/[\r>]/g," ").trim()}`);ex.resolve(publicResult(ex));refresh();pump()}
+function publicResult(ex){return{cmd:ex.cmd,text:ex.text||"",status:ex.status,meta:ex.meta||classify(ex.text||""),correlation:ex.correlation||{pass:false},exchangeId:ex.id,endpoint:ex.endpoint}}
+function onNotify(ev){const dv=ev.target.value,bytes=new Uint8Array(dv.buffer,dv.byteOffset,dv.byteLength),text=dec.decode(bytes);logChunk("RX",bytes,text,inflight?inflight.id:(drain?drain.previousExchangeId:null));if(drain){drain.text+=text;drain.touch();if(drain.text.includes(">")){const d=drain;drain=null;counters.late++;event("ERROR","LATE_RESPONSE odizolowana",{previous_exchange_id:d.previousExchangeId,raw_text:d.text});pump();refresh()}return}if(!inflight){counters.orphan++;event("ERROR","ORPHAN_RX",{raw_text:text});return}rxBuffer+=text;if(!rxBuffer.includes(">"))return;const ex=inflight,full=rxBuffer;rxBuffer="";const meta=classify(full),corr=correlate(ex.cmd,full,meta);if(!corr.pass&&ex.kind!=="AT")counters.mismatch++;finishExchange(ex,meta.status,full,corr,meta)}
+async function writeBytes(text,exchangeId){const bytes=enc.encode(text);for(let i=0;i<bytes.length;i+=CHUNK_SIZE){const part=bytes.slice(i,i+CHUNK_SIZE);logChunk("TX",part,dec.decode(part),exchangeId);if(writeChar.properties.writeWithoutResponse)await writeChar.writeValueWithoutResponse(part);else await writeChar.writeValue(part)}}
+function updateRequestedState(cmd){const c=cmd.toUpperCase();if(c.startsWith("ATSP"))adapterState.protocol=c.slice(4);else if(c.startsWith("ATSH"))adapterState.header=c.slice(5).trim();else if(c.startsWith("ATCRA"))adapterState.receiver=c.slice(5).trim()||null;else if(c.startsWith("ATCAF"))adapterState.caf=c.slice(5);else if(c.startsWith("ATH"))adapterState.headers=c.slice(3)}
+
+const PROFILES=[
+  {name:"IOS-Vlink / vLinker",service:"e7810a71-73ae-499d-8c15-faa9aef0c3f2",auto:true},
+  {name:"FFF0",service:"0000fff0-0000-1000-8000-00805f9b34fb",write:"0000fff2-0000-1000-8000-00805f9b34fb",notify:"0000fff1-0000-1000-8000-00805f9b34fb"},
+  {name:"FFE0",service:"0000ffe0-0000-1000-8000-00805f9b34fb",write:"0000ffe1-0000-1000-8000-00805f9b34fb",notify:"0000ffe1-0000-1000-8000-00805f9b34fb"}
+];
+async function findCharacteristics(gatt){const services=await gatt.getPrimaryServices();for(const p of PROFILES){const svc=services.find(x=>x.uuid===p.service);if(!svc)continue;try{if(p.auto){const chars=await svc.getCharacteristics(),w=chars.find(c=>c.properties.write||c.properties.writeWithoutResponse),n=chars.find(c=>c.properties.notify||c.properties.indicate);if(w&&n)return{w,n,svc,profile:p.name}}else return{w:await svc.getCharacteristic(p.write),n:await svc.getCharacteristic(p.notify),svc,profile:p.name}}catch(_){}}return null}
+async function connect(){if(!navigator.bluetooth){event("ERROR","Web Bluetooth niedostępny. Wymagane HTTPS oraz zgodna przeglądarka.");return false}try{setStatus("skanowanie…");device=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:PROFILES.map(p=>p.service)});device.addEventListener("gattserverdisconnected",onDisconnected);server=await device.gatt.connect();const picked=await findCharacteristics(server);if(!picked)throw Error("brak znanego serwisu write+notify");writeChar=picked.w;notifyChar=picked.n;serviceUuid=picked.svc.uuid;adapterProfile=picked.profile;await notifyChar.startNotifications();notifyChar.addEventListener("characteristicvaluechanged",onNotify);connected=true;$("#device").hidden=false;$("#device").textContent=device.name||adapterProfile;setStatus("połączony","on");event("INFO","BLE połączone",{adapter:{name:device.name||null,profile:adapterProfile,service_uuid:serviceUuid,write_uuid:writeChar.uuid,notify_uuid:notifyChar.uuid}});refresh();return true}catch(err){event("ERROR","Połączenie: "+err.message);setStatus("rozłączony","err");return false}}
+function onDisconnected(){connected=false;monitoring=false;autoRunning=false;if(responseTimer)clearTimeout(responseTimer);responseTimer=null;if(inflight){const ex=inflight;inflight=null;ex.status="DISCONNECTED";ex.text=rxBuffer;ex.correlation={pass:false,reason:"disconnect"};logExchange(ex);ex.resolve(publicResult(ex))}while(queue.length){const q=queue.shift();q.resolve({cmd:q.cmd,status:"DISCONNECTED",text:""})}drain=null;rxBuffer="";writeChar=notifyChar=server=null;setStatus("rozłączony","err");event("ERROR","GATT rozłączony");refresh()}
+async function disconnect(){monitoring=false;autoRunning=false;try{if(device&&device.gatt.connected)device.gatt.disconnect()}catch(_){}refresh()}
+
+async function runCommands(commands){const out=[];for(const c of commands){if(!connected)break;const r=await enqueue(c,DEFAULT_TIMEOUT);out.push(r);await delay(c.startsWith("ATSP")?350:100)}return out}
+const delay=ms=>new Promise(r=>setTimeout(r,ms));
+async function configureObd(){return runCommands(["ATZ","ATI","AT@1","ATE0","ATL0","ATS1","ATH0","ATCAF1","ATSP6","ATCRA 7E8"])}
+async function requestVehicle(cmd,endpoint,timeout=DEFAULT_TIMEOUT){for(let pending=0;pending<4;pending++){const res=await enqueue(cmd,timeout,{endpoint});if(res.meta&&res.meta.status==="NEGATIVE_RESPONSE"&&res.meta.nrc==="78"){event("INFO",`NRC 78 dla ${cmd}; oczekiwanie ${pending+1}/4`);await delay(500);continue}return res}return{cmd,status:"RESPONSE_PENDING_LIMIT",text:"",correlation:{pass:false,reason:"nrc78_limit"}}}
+
+function responseTokens(text){return (text||"").toUpperCase().replace(/[>\r\n]/g," ").split(/\s+/).filter(t=>/^[0-9A-F]{2}$/.test(t))}
+/* ELM z CAF1 może zwrócić jeden prefiks 41, a następnie sklejone PID+data:
+   41 0C 09 3D 04 47 05 ... . Obsługujemy też kolejne segmenty zaczynające się od 41. */
+function parsePidMap(text){
+  const bytes=responseTokens(text),out={};
+  let i=0;
   while(i<bytes.length){
-    const pid=bytes[i].toString(16).padStart(2,'0').toUpperCase();
-    const len=PID_LEN[pid]; if(len==null) break;           // nieznany PID → nie umiem iść dalej
-    if(i+1+len>bytes.length) break;
-    out[pid]=bytes.slice(i+1,i+1+len); i+=1+len;
+    if(bytes[i]!=="41"){i++;continue}
+    i++;
+    while(i<bytes.length&&bytes[i]!=="41"){
+      const pid=bytes[i],len=PID_LEN[pid];
+      if(len==null||i+1+len>bytes.length)break;
+      out[pid]=bytes.slice(i+1,i+1+len).map(x=>parseInt(x,16));
+      i+=1+len;
+    }
   }
   return out;
 }
-function pidVal(text,pid){ return decodeBytes(pid, parseObd(text,pid)); }
-function decodeBytes(pid,b){
-  if(!b) return null;
-  switch(pid){
-    case '0C': return {v:(b[0]*256+b[1])/4, u:'RPM', s:(( b[0]*256+b[1])/4).toFixed(0)};
-    case '04': return {v:b[0]*100/255, u:'%load', s:(b[0]*100/255).toFixed(0)};
-    case '05': return {v:b[0]-40, u:'°C ECT', s:(b[0]-40)+''};
-    case '0F': return {v:b[0]-40, u:'°C IAT', s:(b[0]-40)+''};
-    case '0B': return {v:b[0], u:'kPa MAP', s:b[0]+''};
-    case '06': return {v:(b[0]-128)*100/128, u:'%STFT', s:((b[0]-128)*100/128).toFixed(1)};
-    case '07': return {v:(b[0]-128)*100/128, u:'%LTFT', s:((b[0]-128)*100/128).toFixed(1)};
-    case '11': return {v:b[0]*100/255, u:'%TPS', s:(b[0]*100/255).toFixed(0)};
-    case '42': return {v:(b[0]*256+b[1])/1000, u:'V', s:((b[0]*256+b[1])/1000).toFixed(2)};
-    case '0A': return {v:b[0]*3, u:'kPa rail', s:(b[0]*3)+''};                       // fuel pressure (gauge) ×3
-    case '22': return {v:(b[0]*256+b[1])*0.079, u:'kPa rail(rel)', s:((b[0]*256+b[1])*0.079).toFixed(0)}; // rel to manifold
-    case '23': return {v:(b[0]*256+b[1])*10, u:'kPa rail', s:((b[0]*256+b[1])*10)+''}; // gauge ×10 (GDI/diesel)
-    case '03': { const m={1:'OL',2:'CL',4:'OL-load',8:'OL-fault',16:'CL-fault'};
-                 return {v:b[0], u:'fuelSys', s:(m[b[0]]||('0x'+b[0].toString(16)))}; }
-    case '34': case '24': { const lam=((b[0]*256+b[1])/65536)*2; const cur=(b[2]*256+b[3])/256-128;
-                 return {v:lam, u:'λ', s:lam.toFixed(3)+' ('+(cur>=0?'+':'')+cur.toFixed(2)+'mA)'}; }
-    default: return {v:null,u:'',s:b.map(x=>x.toString(16).padStart(2,'0')).join(' ')};
-  }
+function decodePid(pid,b){if(!b)return null;const u=(value,unit,digits=1)=>({value,unit,display:Number(value).toFixed(digits)});switch(pid){case"0C":return u((b[0]*256+b[1])/4,"rpm",0);case"04":return u(b[0]*100/255,"%",0);case"05":return u(b[0]-40,"°C",0);case"06":case"07":return u((b[0]-128)*100/128,"%",1);case"0B":return u(b[0],"kPa",0);case"0A":return u(b[0]*3,"kPa",0);case"34":return u(((b[0]*256+b[1])/65536)*2,"λ",3);default:return null}}
+const PID_SIGNALS={"0C":"powertrain.engine.speed.obd","04":"powertrain.engine.load","05":"powertrain.coolant.temperature","06":"powertrain.fuel.trim.short","07":"powertrain.fuel.trim.long","0B":"powertrain.intake.map","0A":"powertrain.fuel.rail_pressure.obd","34":"powertrain.lambda.b1s1"};
+function acceptSample(signalId,decoded,source,raw,confidence="standard_obd"){const now=mono(),sample={session:sessionId,seq:++seq,sample_id:uuid(),signal_id:signalId,source_exchange_id:source.exchangeId,endpoint_id:source.endpoint||"ECM",request_payload:source.cmd,response_payload_raw:raw,value:decoded.value,unit:decoded.unit,observed_at_monotonic_ms:now,observed_at_wallclock:wall(),quality_status:"valid",acquisition_mode:"active_poll",decoder_id:signalId,decoder_version:APP_VERSION,definition_pack_hash:"builtin-v0.6.1",definition_confidence:confidence,reject_reason:null,fuel_state:fuelState};sessionSampleCount++;dbPut("sample",sample);lastSignals.set(signalId,{...sample,display:decoded.display});view("sample",`${signalId}=${decoded.display} ${decoded.unit}`)}
+function renderCards(){
+  const labels={"powertrain.engine.speed.obd":"Obroty silnika","powertrain.engine.load":"Obciążenie","powertrain.coolant.temperature":"Płyn chłodzący","powertrain.fuel.trim.short":"Korekta STFT","powertrain.fuel.trim.long":"Korekta LTFT","powertrain.intake.map":"Ciśnienie MAP","powertrain.fuel.rail_pressure.obd":"Ciśnienie paliwa","powertrain.lambda.b1s1":"Lambda B1S1","powertrain.engine.speed.enhanced":"Obroty · DID","powertrain.fuel.rail_pressure.enhanced":"Rail · DID"};
+  const priority=["powertrain.engine.speed.obd","powertrain.engine.speed.enhanced","powertrain.lambda.b1s1","powertrain.fuel.rail_pressure.enhanced","powertrain.fuel.rail_pressure.obd","powertrain.engine.load","powertrain.intake.map","powertrain.coolant.temperature","powertrain.fuel.trim.short","powertrain.fuel.trim.long"];
+  const entries=[...lastSignals.entries()].sort((a,b)=>{const ai=priority.indexOf(a[0]),bi=priority.indexOf(b[0]);return(ai<0?99:ai)-(bi<0?99:bi)}),now=mono();cardsEl.innerHTML="";
+  if(!entries.length){cardsEl.innerHTML='<div class="empty-state">Po połączeniu pojawią się tutaj zweryfikowane parametry silnika.</div>';return}
+  entries.forEach(([id,s],index)=>{const age=Math.max(0,now-s.observed_at_monotonic_ms),stale=age>5000,card=document.createElement("div");card.className="card"+(stale?" stale":"")+(index===0?" hero-card":"");card.innerHTML='<div class="name"></div><div class="value"></div><div class="meta"><span class="fresh"></span><span class="source"></span></div>';card.querySelector(".name").textContent=labels[id]||id;card.querySelector(".value").textContent=`${s.display} ${s.unit}`;card.querySelector(".fresh").textContent=(stale?"STALE":"● LIVE")+` · ${(age/1000).toFixed(1)}s`;card.querySelector(".source").textContent=` · ex ${s.source_exchange_id}`;cardsEl.appendChild(card)})
 }
-function decodeDtcs(text,posByte){ // 43/47 followed by DTC pairs
-  const u=(text||'').toUpperCase().replace(/[\r>]/g,' ');
-  const m=u.match(new RegExp(posByte+'((?:\\s+[0-9A-F]{2})+)'));
-  if(!m) return null;
-  const bytes=m[1].trim().split(/\s+/).map(x=>parseInt(x,16));
-  const codes=[];
-  for(let i=0;i+1<bytes.length;i+=2){
-    const a=bytes[i],b=bytes[i+1]; if(a===0&&b===0) continue;
-    const sys=['P','C','B','U'][(a>>6)&3];
-    const c=sys+((a>>4)&3)+ (a&0xF).toString(16).toUpperCase()+ (b>>4).toString(16).toUpperCase()+ (b&0xF).toString(16).toUpperCase();
-    codes.push(c);
-  }
-  return codes;
+function updateSessionUi(){
+  const elapsed=sessionStartedMono?Math.max(0,mono()-sessionStartedMono):0,mins=Math.floor(elapsed/60000),secs=Math.floor(elapsed/1000)%60;
+  $("#sessionTime").textContent=String(mins).padStart(2,"0")+":"+String(secs).padStart(2,"0");
+  $("#sampleCount").textContent=sessionSampleCount.toLocaleString("pl-PL");$("#exchangeCount").textContent=sessionExchangeCount.toLocaleString("pl-PL");
+  const issues=counters.timeouts+counters.late+counters.orphan+counters.mismatch+counters.bufferFull;
+  $("#dataState").textContent=issues?"UWAGA":"OK";$("#dataState").style.color=issues?"var(--warn)":"var(--ok)";
+  $("#integrity").textContent=issues?`Timeout ${counters.timeouts} · spóźnione ${counters.late} · orphan ${counters.orphan} · mismatch ${counters.mismatch} · buffer ${counters.bufferFull}`:"Brak wykrytych problemów integralności w tej sesji.";
 }
+setInterval(()=>{renderCards();updateSessionUi()},1000);
 
-/* ---------------- kolejka ---------------- */
-let queue=[], inflight=null, rxBuf='', promptTimer=null;
-function enqueue(cmd,timeoutMs=T_DEFAULT){return new Promise(resolve=>{
-  if(!writeChar){ resolve({cmd,text:'',status:'DISCONNECTED'}); return; }  // nie zawieszaj kolejki po rozłączeniu
-  queue.push({cmd,timeoutMs,resolve,session:sessionId}); pump(); refreshControls();
-});}
-async function pump(){
-  if(inflight||queue.length===0||!writeChar) return;
-  inflight=queue.shift(); inflight.id=++seq; inflight.tStart=mono(); rxBuf=''; refreshControls();
-  promptTimer=setTimeout(()=>{ const ex=inflight; inflight=null; promptTimer=null;
-    ex.text=rxBuf; ex.status='TIMEOUT'; rxBuf='';
-    view('resp','⟵',`[TIMEOUT] ${ex.cmd}`); logExchange(ex);
-    ex.resolve({cmd:ex.cmd,text:ex.text,status:'TIMEOUT'}); refreshControls(); pump();
-  }, inflight.timeoutMs);
-  try{ setRequestedState(inflight.cmd);
-    await writeBytes(inflight.cmd+($('#cr').checked?'\r':''), inflight.id, inflight.session);
-    view('tx','TX',inflight.cmd);
-  }catch(e){ clearTimeout(promptTimer); promptTimer=null;
-    const ex=inflight; inflight=null; ex.status='WRITE_ERROR'; ex.text=String(e.message||e);
-    errline('write error: '+ex.text); logExchange(ex);
-    ex.resolve({cmd:ex.cmd,text:ex.text,status:'WRITE_ERROR'}); refreshControls(); pump(); }
-}
-function onNotify(ev){
-  const dv=ev.target.value;
-  const bytes=new Uint8Array(dv.buffer,dv.byteOffset,dv.byteLength); const txt=dec.decode(bytes);
-  logChunk('RX',bytes,txt, inflight?inflight.id:null, null, inflight?inflight.session:sessionId);
-  if(!inflight) return;
-  rxBuf+=txt;
-  if(rxBuf.includes('>')){
-    clearTimeout(promptTimer); promptTimer=null;
-    const full=rxBuf; rxBuf=''; const ex=inflight; inflight=null;
-    const c=classify(full); ex.text=full; ex.status=c.status; ex.meta=c;
-    confirmStateOn(ex);
-    const extra=c.status==='NEGATIVE_RESPONSE'?` (7F ${c.service} ${c.nrc} ${c.nrcName})`:'';
-    view('resp','⟵',`[${ex.status}${extra}] ${full.replace(/[\r>]/g,' ').trim()}`);
-    logExchange(ex);
-    ex.resolve({cmd:ex.cmd,text:full,status:ex.status,meta:c}); refreshControls(); pump();
-  }
-}
-function setRequestedState(cmd){
-  const u=cmd.toUpperCase().replace(/\s+/g,'');
-  if(u.startsWith('ATSP')) requestedState.protocol=u.slice(4);
-  else if(u.startsWith('ATSH')) requestedState.header=cmd.slice(4).trim();
-  else if(u.startsWith('ATCRA')) requestedState.cra=cmd.slice(5).trim()||'(reset)';
-  else if(u.startsWith('ATCAF')) requestedState.caf=u.slice(5);
-}
-function confirmStateOn(ex){
-  const u=ex.cmd.toUpperCase().replace(/\s+/g,'');
-  if(u==='ATZ'||u.startsWith('ATD')){ resetAdapterState(); return; }
-  if(!(ex.status==='OK'||ex.status==='OK_DATA')) return;
-  if(u.startsWith('ATSP')) confirmedState.protocol=requestedState.protocol;
-  else if(u.startsWith('ATSH')) confirmedState.header=requestedState.header;
-  else if(u.startsWith('ATCRA')) confirmedState.cra=requestedState.cra;
-  else if(u.startsWith('ATCAF')) confirmedState.caf=requestedState.caf;
-}
-async function writeBytes(str,exId,sess){
-  const bytes=enc.encode(str); let frag=0;
-  for(let i=0;i<bytes.length;i+=CHUNK){ const c=bytes.slice(i,i+CHUNK);
-    logChunk('TX',c,dec.decode(c),exId,frag++,sess);
-    if(writeChar.properties.writeWithoutResponse) await writeChar.writeValueWithoutResponse(c);
-    else await writeChar.writeValue(c); }
-}
+async function monitor(){monitoring=true;refresh();event("INFO","Monitor start: CAF1 + ATH0, odpowiedzi tylko po korelacji");await runCommands(["ATE0","ATL0","ATS1","ATH0","ATCAF1","ATSP6","ATCRA 7E8"]);const groups=["010C04050B0607","01340A"];while(monitoring&&connected){for(const cmd of groups){if(!monitoring||!connected)break;const res=await requestVehicle(cmd,"ECM",POLL_TIMEOUT);if(res.correlation&&res.correlation.pass){const map=parsePidMap(res.text);for(const[pid,bytes]of Object.entries(map)){const decoded=decodePid(pid,bytes);if(decoded&&PID_SIGNALS[pid])acceptSample(PID_SIGNALS[pid],decoded,res,bytes.map(x=>x.toString(16).padStart(2,"0")).join(" "))}}await delay(180)}}monitoring=false;refresh();event("INFO","Monitor zatrzymany")}
 
-/* ---------------- profile + connect ---------------- */
-const ADAPTER_PROFILES=[
-  // z sesji 21.07: IOS-Vlink — Nordic-UART-like, JEDNA charakterystyka (write=notify).
-  {name:'IOS-Vlink / vLinker (svc e7810a71)', service:'e7810a71-73ae-499d-8c15-faa9aef0c3f2', chars:'auto'},
-  {name:'FFF0 (fff2 w/fff1 n)', service:'0000fff0-0000-1000-8000-00805f9b34fb',
-    write:'0000fff2-0000-1000-8000-00805f9b34fb', notify:'0000fff1-0000-1000-8000-00805f9b34fb'},
-  {name:'FFE0 (ffe1 shared)', service:'0000ffe0-0000-1000-8000-00805f9b34fb',
-    write:'0000ffe1-0000-1000-8000-00805f9b34fb', notify:'0000ffe1-0000-1000-8000-00805f9b34fb'},
-];
-const KNOWN_SVC=[0xFFF0,0xFFE0,0xFFE5,...ADAPTER_PROFILES.map(p=>p.service)];
-async function pickChars(server){
-  const services=await server.getPrimaryServices();
-  for(const p of ADAPTER_PROFILES){
-    const svc=services.find(s=>s.uuid===p.service); if(!svc) continue;
-    try{
-      if(p.chars==='auto'){ // wybierz write+notify w OBRĘBIE nazwanego serwisu
-        const chars=await svc.getCharacteristics(); let w=null,n=null;
-        for(const ch of chars){ const pr=ch.properties;
-          if(!n&&(pr.notify||pr.indicate)) n=ch; if(!w&&(pr.write||pr.writeWithoutResponse)) w=ch; }
-        if(w&&n) return {w,n,svc,profile:p.name};
-      }else{
-        const w=await svc.getCharacteristic(p.write); const n=await svc.getCharacteristic(p.notify);
-        return {w,n,svc,profile:p.name};
-      }
-    }catch(e){}
-  }
-  for(const svc of services){ const chars=await svc.getCharacteristics(); let w=null,n=null;
-    for(const ch of chars){ const pr=ch.properties;
-      if(!n&&(pr.notify||pr.indicate)) n=ch; if(!w&&(pr.write||pr.writeWithoutResponse)) w=ch; }
-    if(w&&n) return {w,n,svc,profile:'HEURYSTYKA (eksperymentalny)'}; }
-  return null;
-}
-async function connect(){
-  if(!navigator.bluetooth){ errline('navigator.bluetooth niedostępny. Android→Chrome, iOS→Bluefy, https wymagane.'); return; }
-  try{
-    setStatus('skanowanie…');
-    device=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:KNOWN_SVC});
-    device.addEventListener('gattserverdisconnected',onDisc);
-    sys('wybrano: '+(device.name||device.id)); $('#dev').style.display=''; $('#dev').textContent=device.name||'BLE';
-    setStatus('łączenie…'); server=await device.gatt.connect();
-    const pick=await pickChars(server);
-    if(!pick){ errline('Brak pary write+notify. Prześlij listę serwisów z logu.'); setStatus('błąd char.','err'); return; }
-    writeChar=pick.w; notifyChar=pick.n; svcUuid=pick.svc.uuid; adapterProfile=pick.profile;
-    resetAdapterState();
-    await notifyChar.startNotifications();
-    notifyChar.addEventListener('characteristicvaluechanged',onNotify);
-    sys(`profil: ${adapterProfile}`); sys(`svc=${svcUuid}`);
-    sys(`write=${writeChar.uuid} (${writeChar.properties.writeWithoutResponse?'WWR':'WR'})  notify=${notifyChar.uuid}`);
-    idbPut('exchange',{session:sessionId,seq:++seq,lvl:'META',ts_wall:wall(),
-      device:device.name||device.id,profile:adapterProfile,service:svcUuid,write:writeChar.uuid,notify:notifyChar.uuid});
-    setStatus('połączony','on'); connectedUI(true);
-  }catch(e){ errline('connect: '+e.message); setStatus('rozłączony','err'); }
-}
-function onDisc(){
-  setStatus('rozłączony','err'); connectedUI(false); sys('GATT rozłączony'); resetAdapterState(); monitoring=false;
-  if(promptTimer){ clearTimeout(promptTimer); promptTimer=null; }
-  if(inflight){ const ex=inflight; inflight=null; ex.text=rxBuf; ex.status='DISCONNECTED'; rxBuf='';
-    logExchange(ex); ex.resolve({cmd:ex.cmd,text:ex.text,status:'DISCONNECTED'}); }
-  while(queue.length){ const q=queue.shift(); q.resolve({cmd:q.cmd,text:'',status:'DISCONNECTED'}); }
-  writeChar=notifyChar=server=null;
-}
-async function disconnect(){ monitoring=false; try{ if(device&&device.gatt.connected) device.gatt.disconnect(); }catch(e){} }
+function f32be(bytes){const a=new Uint8Array(bytes),dv=new DataView(a.buffer,a.byteOffset,a.byteLength);return dv.getFloat32(0,false)}
+function extractDidData(text,did){const tokens=responseTokens(text);for(let i=0;i+2<tokens.length;i++)if(tokens[i]==="62"&&(tokens[i+1]+tokens[i+2])===did)return tokens.slice(i+3).map(x=>parseInt(x,16));return null}
+function candidateViews(bytes){const out=["hex="+bytes.map(x=>x.toString(16).padStart(2,"0")).join(" ")];if(bytes.length>=1)out.push("u8="+bytes[0],"s8="+(bytes[0]>127?bytes[0]-256:bytes[0]));if(bytes.length>=2){const u16=bytes[0]*256+bytes[1];out.push("u16be="+u16,"s16be="+(u16>32767?u16-65536:u16))}if(bytes.length>=4)out.push("f32be="+f32be(bytes.slice(0,4)));return out.join(" · ")}
+function decodeDefinition(def,bytes){if(def.codec==="float32_be"&&bytes.length>=4)return{value:f32be(bytes.slice(0,4)),unit:def.unit,display:f32be(bytes.slice(0,4)).toFixed(def.unit==="rpm"?0:2)};return null}
+async function readDid(didRaw,ecu){const did=String(didRaw||"").toUpperCase().replace(/[^0-9A-F]/g,"");if(!/^[0-9A-F]{4}$/.test(did)){event("ERROR","DID musi mieć dokładnie 4 znaki hex");return}if(!connected||monitoring||autoRunning)return;const ep=ENDPOINTS[ecu]||ENDPOINTS.ECM;$("#readDid").disabled=true;await runCommands(["ATE0","ATL0","ATS1","ATH0","ATCAF1","ATSP6","ATCRA "+ep.response,"ATSH "+ep.request]);const res=await requestVehicle("22"+did,ecu);let verdict;if(res.correlation&&res.correlation.pass&&res.meta.status!=="NEGATIVE_RESPONSE"){const bytes=extractDidData(res.text,did),def=DID_DEFS[ecu+":"+did];if(!bytes)verdict={kind:"INCONCLUSIVE",text:"Skorelowana odpowiedź, ale parser nie wydobył payloadu"};else if(def){const decoded=decodeDefinition(def,bytes);if(decoded&&decoded.value>=def.min&&decoded.value<=def.max){acceptSample(def.signal_id,decoded,res,bytes.map(x=>x.toString(16).padStart(2,"0")).join(" "),def.confidence);verdict={kind:"PASS",text:`${def.name} = ${decoded.display} ${decoded.unit}`,detail:candidateViews(bytes)}}else verdict={kind:"INCONCLUSIVE",text:"Wartość poza zakresem plausibility",detail:candidateViews(bytes)}}else verdict={kind:"INFO",text:`DID ${did} odpowiedział; definicja pozostaje kandydatem`,detail:candidateViews(bytes)}}else if(res.meta&&res.meta.status==="NEGATIVE_RESPONSE")verdict={kind:"INCONCLUSIVE",text:`DID ${did}: 7F 22 ${res.meta.nrc} (${res.meta.nrcName})`,detail:res.text};else verdict={kind:"FAIL",text:`DID ${did}: odpowiedź odrzucona przez korelację (${res.status})`,detail:res.correlation&&res.correlation.reason};renderVerdict(verdict);await runCommands(["ATSH 7E0","ATCRA 7E8"]);refresh()}
+function renderVerdict(v){const box=document.createElement("div");box.className="v "+v.kind;box.innerHTML='<b></b><div></div><small style="color:var(--dim);font-family:var(--mono)"></small>';box.querySelector("b").textContent=v.kind;box.querySelector("div").textContent=v.text;box.querySelector("small").textContent=v.detail||"";verdictEl.prepend(box)}
 
-function setStatus(t,c){ const el=$('#st'); el.textContent=t; el.className='status'+(c?' '+c:''); }
-function setLogState(t,c){ const el=$('#logstate'); el.style.display=''; el.textContent=t; el.className='status'+(c?' '+c:''); }
-let connected=false, macroRunning=false, monitoring=false, autoRunning=false;
-function connectedUI(on){ connected=on; refreshControls(); }
-function busy(){ return !!inflight || queue.length>0 || macroRunning || monitoring || autoRunning; }
-function updateMain(){
-  const active = connected||monitoring||autoRunning;
-  const b=$('#btnMain');
-  b.textContent = autoRunning&&!monitoring ? '⏳ Diagnozuję… (kliknij by przerwać)'
-                : active ? '■ Stop i rozłącz' : '🚀 Połącz i diagnozuj';
-  b.classList.toggle('running', active);
-}
-function refreshControls(){
-  const canMacro=connected&&!macroRunning&&!monitoring&&!autoRunning;
-  document.querySelectorAll('button.macro').forEach(b=>b.disabled=!canMacro);
-  $('#btnSend').disabled=!canMacro; $('#cmd').disabled=!canMacro;
-  $('#btnMon').disabled=!(connected&&!macroRunning&&!autoRunning);
-  $('#btnMon').textContent = monitoring ? 'D · STOP monitor ■' : 'D · Monitor ▶';
-  $('#btnMon').classList.toggle('running', monitoring);
-  $('#btnNewSess').disabled=busy(); $('#btnDelSess').disabled=busy();
-  updateMain();
-}
+function showFuelPrompt(){$("#fuelPrompt").classList.add("show")}
+function setFuel(state){if(!["BENZYNA","LPG"].includes(state))return;fuelState=state;$("#fuel").textContent=state;$("#fuel").className="status on";$$('[data-fuel]').forEach(b=>b.classList.toggle("active",b.dataset.fuel===state));$("#fuelPrompt").classList.remove("show");event("INFO","FUEL_STATE "+state,{event_type:"fuel_transition",fuel_state:state})}
+function newSession(){if(inflight||queue.length||monitoring||autoRunning)return;sessionId=uuid();seq=0;sessionStartedWall=wall();sessionStartedMono=mono();sessionSampleCount=0;sessionExchangeCount=0;fuelState=null;lastSignals.clear();counters={timeouts:0,late:0,orphan:0,mismatch:0,bufferFull:0,rejected:0};$("#fuel").textContent="WYBIERZ";$("#fuel").className="status warn";$$('[data-fuel]').forEach(b=>b.classList.remove("active"));$("#session").textContent="sesja: "+sessionId.slice(0,8);event("INFO","Nowa sesja "+sessionId,{app_version:APP_VERSION});renderCards();refresh();showFuelPrompt()}
+async function waitForTransportIdle(maxMs=6000){const end=performance.now()+maxMs;while((inflight||queue.length||drain)&&performance.now()<end)await delay(50);return !inflight&&!queue.length&&!drain}
+async function exportSession(){if(autoRunning||exporting){if(autoRunning)event("ERROR","Eksport dostępny po zakończeniu diagnozy startowej");return}exporting=true;refresh();const old=$("#export").textContent;if(monitoring){monitoring=false;$("#export").textContent="Domykam bieżący pomiar…";refresh();if(!await waitForTransportIdle()){event("ERROR","Eksport przerwany: transport nie przeszedł w stan idle");exporting=false;$("#export").textContent=old;refresh();return}}$("#export").textContent="Przygotowuję eksport…";const flushed=await flushWrites();if(!flushed){event("ERROR","Eksport przerwany: oczekujące zapisy IndexedDB");exporting=false;$("#export").textContent=old;refresh();return}const[chunks,exchanges,samples,events]=await Promise.all([dbAll("chunk"),dbAll("exchange"),dbAll("sample"),dbAll("event")]);const manifest={record_type:"capture_manifest",schema:"xc70.capture_manifest.v2",session_id:sessionId,app_version:APP_VERSION,started_wall:sessionStartedWall,ended_wall:wall(),duration_ms:Math.round(mono()-sessionStartedMono),write_flush_complete:true,adapter:{name:device?(device.name||null):null,profile:adapterProfile,service_uuid:serviceUuid},scope:{transport:"BLE ELM",policy:"read-only allowlist",endpoints:ENDPOINTS},parser:{framing:"ELM CAF1 ATH0",correlation:"service+PID/DID",version:APP_VERSION},counters:{...counters},fuel_state_last:fuelState,records:{chunks:chunks.length,exchanges:exchanges.length,samples:samples.length,events:events.length},privacy:{vin_included:false}};const lines=[manifest,...chunks.map(x=>({record_type:"transport_chunk",...x})),...exchanges.map(x=>({record_type:"exchange",...x})),...samples.map(x=>({record_type:"sample",...x})),...events.map(x=>({record_type:"event",...x}))].map(x=>JSON.stringify(x)).join("\n");const url=URL.createObjectURL(new Blob([lines],{type:"application/x-ndjson"})),a=document.createElement("a");a.href=url;a.download=`xc70_${sessionId.slice(0,8)}_${wall().replace(/[:.]/g,"-")}.jsonl`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);$("#export").textContent=`Wyeksportowano ${samples.length} próbek`;setTimeout(()=>{exporting=false;$("#export").textContent=old;refresh()},1800)}
 
-/* ---------------- walidacja payloadu Volvo ---------------- */
-const VOLVO_READ_SERVICES=new Set(['A6','AE']);
-function parseVolvoPayload(str){
-  const toks=(str||'').trim().split(/\s+/).filter(Boolean).map(t=>t.toUpperCase());
-  if(toks.length!==8) return {ok:false,msg:`Wymagane dokładnie 8 bajtów (jest ${toks.length}).`};
-  if(!toks.every(t=>/^[0-9A-F]{2}$/.test(t))) return {ok:false,msg:'Każdy bajt = 2 znaki hex.'};
-  const service=toks[2];
-  if(!VOLVO_READ_SERVICES.has(service)) return {ok:false,msg:`Serwis ${service} spoza allowlisty (dozwolone tylko A6/AE — odczyt).`};
-  return {ok:true, toks, addr:toks[1], service, pid:toks.slice(3).join(' '), byte0Verified:false,
-    warning:'Semantyka byte0/response CAN ID nie potwierdzona dla XC70.',
-    breakdown:`byte0=${toks[0]} (UNVERIFIED) addr=${toks[1]} svc=${toks[2]} pid=${toks.slice(3,5).join(' ')} …`};
-}
+async function identifyAndDiagnose(){autoRunning=true;refresh();const setup=await configureObd();const setupBad=setup.find(x=>!["RESPONSE"].includes(x.status)||!x.correlation.pass);if(setupBad){renderVerdict({kind:"FAIL",text:"Konfiguracja adaptera nie została potwierdzona",detail:setupBad.cmd+" "+setupBad.status});autoRunning=false;refresh();return}for(const cmd of ["0100","0120","0140","0160","0904","0906","03","07","06"]){if(!connected)break;await requestVehicle(cmd,"ECM",DEFAULT_TIMEOUT);await delay(150)}autoRunning=false;refresh();if(connected)monitor()}
+async function mainToggle(){if(connected){await disconnect();return}if(!fuelState){showFuelPrompt();return}const ok=await connect();if(ok)identifyAndDiagnose()}
+function toggleMonitor(){if(monitoring){monitoring=false;refresh();return}if(connected&&!autoRunning&&!inflight&&!queue.length&&!drain)monitor()}
 
-/* ---------------- MAKRA ---------------- */
-function V(verdict,msg,detail){ return {verdict,msg,detail}; }
-function okish(s){ return s==='OK'||s==='OK_DATA'; }
-function find(r,cmd){ return r.find(x=>x&&x.cmd===cmd); }
+$("#main").onclick=mainToggle;$("#monitorToggle").onclick=toggleMonitor;$("#readDid").onclick=()=>readDid($("#did").value,$("#endpoint").value);$("#did").onkeydown=e=>{if(e.key==="Enter")readDid(e.target.value,$("#endpoint").value)};
+$$('[data-did]').forEach(b=>b.onclick=()=>{$("#did").value=b.dataset.did;$("#endpoint").value=b.dataset.ecu;readDid(b.dataset.did,b.dataset.ecu)});$$('[data-fuel]').forEach(b=>b.onclick=()=>setFuel(b.dataset.fuel));
+$("#newSession").onclick=newSession;$("#export").onclick=exportSession;$("#quickExport").onclick=exportSession;$("#clear").onclick=()=>logEl.innerHTML="";
+$$('[data-page]').forEach(button=>button.onclick=()=>{const page=button.dataset.page;$$('[data-page]').forEach(b=>b.classList.toggle("active",b===button));$$('[data-page-panel]').forEach(panel=>panel.classList.toggle("active",panel.dataset.pagePanel===page));window.scrollTo({top:0,behavior:"smooth"})});
+CANDIDATES.forEach(c=>{const b=document.createElement("button");b.textContent=`${c.name} ${c.did}`;b.className="badge candidate";b.onclick=()=>{$("#did").value=c.did;$("#endpoint").value=c.ecu;readDid(c.did,c.ecu)};$("#candidates").appendChild(b)});
 
-const MACROS={
-  A:{ note:'SETUP — identyfikacja + konfiguracja',
-      cmds:()=>['ATZ','ATI','AT@1','ATE0','ATL0','ATS1','ATH1'],
-      evaluate:r=>{ if(!r.length) return V('INCONCLUSIVE','Brak wyników.');
-        const id=r.find(x=>/ELM327/i.test(x.text||''));
-        const setupBad=['ATE0','ATL0','ATS1','ATH1'].map(c=>find(r,c)).filter(x=>x&&!okish(x.status));
-        if(!id) return V('INCONCLUSIVE','Brak identyfikacji ELM327 — sprawdź log/połączenie.');
-        if(setupBad.length) return V('INCONCLUSIVE','Adapter wykryty, ale konfiguracja niepełna: '+setupBad.map(x=>x.cmd+'='+x.status).join(', '));
-        return V('PASS','IDENTITY_PASS + SETUP_PASS.', (id.text||'').replace(/[\r>]/g,' ').trim()); }
-  },
-  B:{ note:'11-bit sanity — oczekiwane 41 00 z 7E8',
-      cmds:()=>['ATE0','ATS1','ATH1','ATCAF1','ATSP6','0100','0120','010C'],
-      evaluate:r=>{
-        const setupCmds=['ATE0','ATS1','ATH1','ATCAF1','ATSP6'];
-        const missing=setupCmds.filter(c=>!find(r,c));
-        if(missing.length) return V('INCONCLUSIVE','Niepełny setup 11-bit — brak: '+missing.join(', '));
-        const setupBad=setupCmds.map(c=>find(r,c)).find(x=>!okish(x.status));
-        if(setupBad) return V('FAIL',`SETUP_11BIT_NOT_CONFIRMED — ${setupBad.cmd}=${setupBad.status}.`);
-        const q=find(r,'0100'); if(!q) return V('INCONCLUSIVE','Brak wyniku 0100.');
-        if(/41\s*00/i.test(q.text||'')) return V('PASS','ECM odpowiada na standard OBD (11-bit).',(q.text||'').replace(/[\r>]/g,' ').trim());
-        if(['NO_DATA','TIMEOUT','NO_CONNECT','DISCONNECTED'].includes(q.status)) return V('FAIL','Brak komunikacji standard OBD ('+q.status+'). Sprawdź zapłon / pin OBD / adapter.');
-        return V('INCONCLUSIVE','Niejednoznaczna odpowiedź 0100: '+q.status); }
-  },
-  C:{ note:'29-bit — rozdzielone werdykty (AT != potwierdzenie transmisji CAN)',
-      cmds:()=>{ const p=parseVolvoPayload($('#req29').value);
-        const base=['ATE0','ATS1','ATH1','ATSP7','ATCRA','ATCAF0','ATAL','ATCP 00','ATSH 0F FF FE'];
-        return p.ok? [...base, p.toks.join(' ')] : base; },
-      evaluate:r=>{
-        const setupCmds=['ATE0','ATS1','ATH1','ATSP7','ATCRA','ATCAF0','ATAL','ATCP 00','ATSH 0F FF FE'];
-        const missing=setupCmds.filter(c=>!find(r,c));
-        if(missing.length) return V('INCONCLUSIVE','Niepełny setup 29-bit — brak: '+missing.join(', '));
-        const setup=setupCmds.map(c=>find(r,c));
-        const unsup=setup.find(x=>x.status==='AT_UNSUPPORTED');
-        if(unsup) return V('FAIL',`COMMAND_SET_NOT_SUPPORTED — firmware odrzuca ${unsup.cmd} ("?").`);
-        const setupBad=setup.find(x=>!okish(x.status));
-        if(setupBad) return V('INCONCLUSIVE',`SETUP_NOT_CONFIRMED — ${setupBad.cmd}=${setupBad.status}. Nie wysuwam wniosku o pojeździe.`);
-        const p=parseVolvoPayload($('#req29').value);
-        if(!p.ok) return V('INCONCLUSIVE',`AT 29-bit przyjęte (COMMAND_SET_SUPPORTED), ale payload nie wysłany: ${p.msg}`);
-        const req=r[r.length-1]; if(!req) return V('INCONCLUSIVE','COMMAND_SET_SUPPORTED, brak wyniku requestu.');
-        const match=matchVolvoResponse(req.text,p,req.meta); const ext=match.frames.length>0;
-        if(req.status==='OK_DATA' && match.positive)
-          return V('PASS','VEHICLE_RESPONSE_PAYLOAD_CORRELATED — adres i usługa pasują (hipoteza layoutu XC70); response CAN ID zaobserwowany, niezweryfikowany.',`CAN_OBSERVED=${match.positive.canId} payload=${match.positive.payload.join(' ')}`);
-        if(req.status==='NEGATIVE_RESPONSE' && match.negative)
-          return V('PASS','VEHICLE_RESPONSE_PAYLOAD_CORRELATED — skorelowany negative response z ramką 29-bit.',`CAN_OBSERVED=${match.frames[0].canId} 7F ${req.meta.service} ${req.meta.nrc} ${req.meta.nrcName}`);
-        if(ext) return V('INCONCLUSIVE','FRAME_OBSERVED — ramka 29-bit bez potwierdzonej korelacji adresu/usługi.',match.frames.map(f=>f.raw).join(' | '));
-        if(req.status==='OK_DATA'||req.status==='NEGATIVE_RESPONSE') return V('INCONCLUSIVE','Odpowiedź bez parsowalnego nagłówka 29-bit — echo/inny framing/niezgodny adapter.',(req.text||'').replace(/[\r>]/g,' ').trim());
-        return V('INCONCLUSIVE','COMMAND_SET_SUPPORTED, INCONCLUSIVE_FILTER_OR_ADDRESS — brak odpowiedzi ('+req.status+'). Odpal Cross-check.'); }
-  },
-  X:{ note:'Cross-check — standard OBD na 29-bit (18DB33F1)',
-      cmds:()=>['ATE0','ATS1','ATH1','ATSP7','ATCRA','ATCAF1','ATSH 18 DB 33 F1','0100'],
-      evaluate:r=>{ const setup=['ATE0','ATS1','ATH1','ATSP7','ATCRA','ATCAF1','ATSH 18 DB 33 F1'].map(c=>find(r,c)).filter(Boolean);
-        const bad=setup.find(x=>!okish(x.status)); if(bad) return V('FAIL',`Cross-check setup odrzucony: ${bad.cmd}=${bad.status}.`);
-        const q=find(r,'0100');
-        if(q && /41\s*00/i.test(q.text||'') && parseExtFrames(q.text).length) return V('PASS','Adapter obsługuje 29-bit: standard OBD odpowiedział z nagłówkiem rozszerzonym.');
-        if(q && /41\s*00/i.test(q.text||'')) return V('INCONCLUSIVE','Jest 41 00, brak parsowalnego nagłówka 29-bit — sprawdź RAW.');
-        if(q && q.status==='AT_UNSUPPORTED') return V('FAIL','Adapter odrzuca konfigurację 29-bit.');
-        return V('INCONCLUSIVE','Brak odpowiedzi na standard-OBD-29-bit — auto może nie wystawiać generic OBD na 29-bit.'); }
-  },
-  Z:{ note:'CLEANUP', cmds:()=>['ATCAF1','ATCRA','ATSP0'],
-      evaluate:r=>{ const bad=r.filter(x=>x&&!okish(x.status));
-        return bad.length? V('INCONCLUSIVE','Cleanup częściowy: '+bad.map(x=>x.cmd+'='+x.status).join(', ')) : V('PASS','Przywrócono auto-format / filtr / auto-protokół.'); }
-  },
-  // E — DTC (stored 03 + pending 07) + Mode 06 (możliwe misfire per cyl na standardzie!)
-  E:{ note:'DTC stored/pending + Mode 06 (monitor)',
-      cmds:()=>['ATE0','ATS1','ATH1','ATCAF1','ATSP6','03','07','06'],
-      evaluate:r=>{
-        const set=['ATSP6'].map(c=>find(r,c)).find(x=>x&&!okish(x.status));
-        if(set) return V('INCONCLUSIVE','Setup nie potwierdzony: '+set.cmd+'='+set.status);
-        const s=find(r,'03'), p=find(r,'07'), m6=find(r,'06');
-        const stored=s?decodeDtcs(s.text,'43'):null;
-        const pend=p?decodeDtcs(p.text,'47'):null;
-        const parts=[];
-        parts.push('DTC zapisane (03): '+(stored&&stored.length?stored.join(', '):(s&&/43/.test((s.text||'').toUpperCase())?'brak':(s?s.status:'—'))));
-        parts.push('DTC oczekujące (07): '+(pend&&pend.length?pend.join(', '):(p&&/47/.test((p.text||'').toUpperCase())?'brak':(p?p.status:'—'))));
-        const m6txt=m6?(m6.text||'').replace(/[\r>]/g,' ').trim():'—';
-        parts.push('Mode 06 (surowo, może zawierać misfire per cyl — do interpretacji): '+m6txt.slice(0,300));
-        const found=(stored&&stored.length)||(pend&&pend.length);
-        return V(found?'INFO':'PASS', found?'DTC znalezione — patrz szczegóły.':'Brak zapisanych/oczekujących DTC (P0xxx).', parts.join('\n')); }
-  },
-  // F — supported PIDs (bitmapy)
-  F:{ note:'Supported PIDs (bitmapy 0100/20/40/60)',
-      cmds:()=>['ATE0','ATS1','ATH1','ATCAF1','ATSP6','0100','0120','0140','0160'],
-      evaluate:r=>{
-        const supported=[];
-        [['0100','00'],['0120','20'],['0140','40'],['0160','60']].forEach(([cmd,base])=>{
-          const q=find(r,cmd); if(!q) return;
-          const b=parseObd(q.text,base); if(!b||b.length<4) return;
-          const bits=(b[0]<<24)|(b[1]<<16)|(b[2]<<8)|b[3];
-          const start=parseInt(base,16);
-          for(let i=0;i<32;i++){ if(bits&(1<<(31-i))){ const pid=(start+1+i).toString(16).padStart(2,'0').toUpperCase(); supported.push(pid); } }
-        });
-        const hi=['0C RPM','04 load','05 ECT','0F IAT','0B MAP','10 MAF','11 TPS','06 STFT','07 LTFT','03 fuelSys','34 λ-wideband','42 Vbat','5E fuelRate']
-          .filter(x=>supported.includes(x.slice(0,2)));
-        return V('INFO', `Auto wystawia ${supported.length} standardowych PID.`, 'Kluczowe dostępne: '+(hi.join(' · ')||'—')+'\nWszystkie: '+supported.join(' ')); }
-  }
-};
-async function runMacro(key){
-  if(!connected||monitoring){ errline('makro wymaga połączenia (i nie w trakcie monitora)'); return; }
-  const m=MACROS[key]; if(!m) return;
-  macroRunning=true; refreshControls(); sys(`▶ MAKRO ${key}: ${m.note}`);
-  const results=[];
-  for(const c of m.cmds()){
-    if(!writeChar){ errline('przerwano — brak połączenia'); break; }
-    const res=await enqueue(c,/^ATZ/i.test(c)?T_ATZ:T_DEFAULT); results.push(res);
-    if(res.status==='DISCONNECTED'){ errline('rozłączono w trakcie makra'); break; }
-    // settle: po zmianie protokołu daj adapterowi chwilę (fix STOPPED)
-    await new Promise(r=>setTimeout(r, /^ATSP/i.test(c)?350:180));
-  }
-  const verdict=m.evaluate(results); renderVerdict(key,verdict,results); sys(`■ MAKRO ${key}: ${verdict.verdict}`);
-  macroRunning=false; refreshControls();
-  return verdict;
-}
-function renderVerdict(key,v,results){
-  const box=document.createElement('div'); box.className='v '+v.verdict;
-  const errs=(results||[]).filter(r=>r&&['AT_UNSUPPORTED','NO_DATA','BUS_ERROR','TIMEOUT','WRITE_ERROR','DISCONNECTED','NEGATIVE_RESPONSE','BUFFER_FULL','STOPPED'].includes(r.status));
-  box.innerHTML=`<b>MAKRO ${key}: ${v.verdict}</b><br>${esc(v.msg)}`
-    +(v.detail?`<br><span style="color:var(--dim);font-family:var(--mono);font-size:11px">${esc(v.detail)}</span>`:'')
-    +(errs.length?`<br><span style="color:var(--dim);font-size:11px">zdarzenia: ${errs.map(e=>e.cmd+'='+e.status).join(', ')}</span>`:'');
-  verdictEl.appendChild(box); box.scrollIntoView({behavior:'smooth',block:'nearest'});
-}
-function esc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-
-/* ---------------- ZNACZNIK PALIWA (ground-truth) + wstępny auto-guess ---------------- */
-let fuelMark=null;                 // ręczny: 'BENZYNA' | 'LPG' | null
-function setFuel(m){ fuelMark=m;
-  $('#fuelchip').textContent='paliwo: '+(m||'—');
-  $('#fuelchip').className='status'+(m?' on':'');
-  sys('⛽ znacznik paliwa (ręczny): '+(m||'wyczyszczony'));
-  idbPut('exchange',{session:sessionId,seq:++seq,lvl:'FUEL_MARK',ts_mono:mono(),ts_wall:wall(),text:(m||'clear')}); }
-// v0.5.2: auto-detekcja paliwa z ciśnienia USUNIĘTA (na tym aucie pompa benzyny nie gaśnie na LPG,
-// rail ~380 kPa na obu paliwach). Paliwo = wyłącznie ręczny znacznik ⛽/🔵. Rail pokazywany informacyjnie.
-function fuelLabel(){ return fuelMark ? fuelMark+' (ręczny)' : '— (kliknij ⛽/🔵)'; }
-
-/* ---------------- MONITOR LIVE (D) v0.5.2 — ISO-TP reassembly + STICKY (bez migania na —) ---------------- */
-// 2 żądania/cykl: g1 = 6 PID (RPM/load/ECT/MAP/STFT/LTFT, wieloramkowe→sklejane), g2 = λ+rail
-const MON_REQ1='010C04050B0607', MON_REQ2='01340A';
-async function toggleMonitor(){
-  if(monitoring){ monitoring=false; return; }            // STOP
-  if(!connected||macroRunning) return;
-  monitoring=true; refreshControls(); liveBox.classList.add('show');
-  sys('▶ MONITOR live v0.5.2 — ISO-TP sklejane + sticky (trzyma ostatnią wartość). Blip gazu → λ. Paliwo ⛽/🔵. STOP by zakończyć.');
-  for(const c of ['ATE0','ATS1','ATH1','ATCAF1','ATSP6','ATCRA 7E8']){ if(!monitoring) break; await enqueue(c,T_DEFAULT); await new Promise(r=>setTimeout(r,120)); }
-  const last={}; let cyc=0;                               // STICKY: wartości pamiętane między cyklami
-  while(monitoring && connected){
-    for(const req of [MON_REQ1, MON_REQ2]){ if(!monitoring) break;
-      const res=await enqueue(req, T_POLL);
-      Object.assign(last, parseMulti(parseIsoTp(res.text)));  // sklej ISO-TP → walk multi-PID → merge (sticky)
-      await new Promise(r=>setTimeout(r,150));            // oddech: odpowiedź w pełni drenuje przed kolejnym żądaniem
-    }
-    const g=(pid)=>{ const d=decodeBytes(pid, last[pid]); return d?d.s:'—'; };
-    const railD=decodeBytes('0A', last['0A']);
-    cyc++;
-    const line=`#${cyc}  RPM=${g('0C')}  λ=${g('34')}  `
-      +`STFT=${g('06')}%  LTFT=${g('07')}%  `
-      +`MAP=${g('0B')}kPa  load=${g('04')}%  ECT=${g('05')}°C  `
-      +`rail=${railD?railD.s+'kPa':'—'}  ⛽${fuelLabel()}`;
-    liveBox.textContent=line; monline(line);
-  }
-  try{ if(writeChar){ await enqueue('ATH1', T_DEFAULT); await enqueue('ATCRA', T_DEFAULT); } }catch(e){}
-  monitoring=false; refreshControls();
-  sys('■ MONITOR zatrzymany (filtr ECM zdjęty).');
-}
-
-/* ---------------- Volvo DID reader (UDS 22 @ 7E0) — potwierdzony transport ---------------- */
-function f32be(b){ const dv=new DataView(new ArrayBuffer(4)); for(let i=0;i<4;i++) dv.setUint8(i, b[i]||0); return dv.getFloat32(0,false); }
-async function readDid(didRaw){
-  if(!connected||macroRunning||monitoring){ errline('DID: wymaga połączenia, nie w trakcie monitora/makra'); return; }
-  const did=(didRaw||'').toUpperCase().replace(/[^0-9A-F]/g,'');
-  if(!/^[0-9A-F]{4}$/.test(did)){ errline('DID = 4 znaki hex, np. D91C'); return; }
-  macroRunning=true; refreshControls(); sys('▶ Volvo DID 22 '+did+' @ 7E0');
-  // ATH0 = nagłówki off → CAF1 skleja czysto "62 DID data"; ATSH 7E0 = fizyczna adresacja ECM
-  for(const c of ['ATE0','ATS1','ATH0','ATCAF1','ATSP6','ATSH 7E0']){ if(writeChar) await enqueue(c,T_DEFAULT); await new Promise(r=>setTimeout(r,120)); }
-  const res=await enqueue('22'+did, T_DEFAULT);
-  if(writeChar){ await enqueue('ATH1',T_DEFAULT); }         // przywróć nagłówki
-  const u=(res.text||'').toUpperCase().replace(/[^0-9A-F]/g,'');
-  const key='62'+did;
-  let v;
-  if(u.includes('7F22')){ v=V('INCONCLUSIVE','DID '+did+': negative response 7F 22 (NRC '+(u.slice(u.indexOf('7F22')+4,u.indexOf('7F22')+6))+') — nieobsługiwany/warunki.', res.text.trim()); }
-  else if(u.includes(key)){
-    const hex=u.slice(u.indexOf(key)+6);
-    const bytes=hex.match(/.{2}/g)?.map(x=>parseInt(x,16))||[];
-    let dec='';
-    if(bytes.length>=4) dec+=' float32='+f32be(bytes).toFixed(3);
-    if(bytes.length>=2) dec+='  int16='+((bytes[0]<<8)|bytes[1]);
-    if(bytes.length>=1) dec+='  int8='+bytes[0];
-    if(bytes.length>=8) dec+='  |6×float?='+[0,4,8].map(o=>bytes.length>=o+4?f32be(bytes.slice(o,o+4)).toFixed(1):'').filter(Boolean).join(',');
-    v=V('INFO','DID '+did+' OK — dane po 62 '+did+':', 'hex='+(hex.match(/.{2}/g)||[]).join(' ')+dec);
-  } else {
-    v=V('INCONCLUSIVE','DID '+did+': brak "62 '+did+'" w odpowiedzi ('+res.status+').', res.text.trim());
-  }
-  renderVerdict('DID '+did, v, [res]);
-  macroRunning=false; refreshControls();
-}
-
-/* ---------------- Sensory P3 (potwierdzone z arkusza, header+równanie) ---------------- */
-const SG=b=>b>127?b-256:b;  // signed byte
-const P3_SENSORS=[
-  {n:'Oil Temp',    did:'D9DC', h:'7E0', u:'°C',   d:b=>(SG(b[0])*256+b[1])/10-273},
-  {n:'Exhaust T2',  did:'D9F9', h:'7E0', u:'°C',   d:b=>(SG(b[0])*256+b[1])/10-273},
-  {n:'Air flow',    did:'D916', h:'7E0', u:'mg/s', d:b=>(b[0]*256+b[1])/10},
-  {n:'Fuel Temp',   did:'D99C', h:'7E0', u:'°C',   d:b=>(SG(b[0])*256+b[1])/10-273},
-  {n:'Fan',         did:'DC02', h:'7E0', u:'%',    d:b=>(256*b[0]+b[1])/100},
-  {n:'A/C Press',   did:'D900', h:'7E0', u:'bar',  d:b=>(b[0]*256+b[1])/1000},
-  {n:'Ash',         did:'D9F2', h:'7E0', u:'g',    d:b=>(b[0]*256+b[1])/100},
-  {n:'Batt Charge', did:'D924', h:'7E0', u:'A',    d:b=>(b[0]*256+b[1])/100},
-  {n:'Eng Torque',  did:'DD8D', h:'7E1', u:'Nm',   d:b=>(SG(b[0])*256+b[1])/10},
-  {n:'Gear',        did:'DD81', h:'7E1', u:'',     d:b=>b[1]},
-  {n:'Haldex Torq', did:'D930', h:'795', u:'Nm',   d:b=>b[0]*256+b[1]},
-  {n:'Haldex Curr', did:'1945', h:'795', u:'mA',   d:b=>b[0]*256+b[1]},
-];
-async function readSensor(s){
-  if(!connected||macroRunning||monitoring){ errline('sensor: wymaga połączenia, nie w monitorze/makrze'); return; }
-  macroRunning=true; refreshControls(); sys('▶ '+s.n+' — 22 '+s.did+' @ '+s.h);
-  for(const c of ['ATE0','ATS1','ATH0','ATCAF1','ATSP6','ATSH '+s.h]){ if(writeChar) await enqueue(c,T_DEFAULT); await new Promise(r=>setTimeout(r,120)); }
-  const res=await enqueue('22'+s.did, T_DEFAULT);
-  if(writeChar){ await enqueue('ATH1',T_DEFAULT); await enqueue('ATSH 7E0',T_DEFAULT); }
-  const u=(res.text||'').toUpperCase().replace(/[^0-9A-F]/g,''); const key='62'+s.did;
-  let v;
-  if(u.includes('7F22')) v=V('INCONCLUSIVE', s.n+': negative 7F 22 — nieobsługiwany na tym aucie / złe warunki.', res.text.trim());
-  else if(u.includes(key)){
-    const hex=u.slice(u.indexOf(key)+6); const b=(hex.match(/.{2}/g)||[]).map(x=>parseInt(x,16));
-    let val=null; try{ val=s.d(b); }catch(e){}
-    v=V('INFO', s.n+' = '+(val!=null?(Math.round(val*100)/100):'?')+' '+s.u, 'DID 22 '+s.did+' @ '+s.h+'  hex='+(hex.match(/.{2}/g)||[]).join(' '));
-  } else v=V('INCONCLUSIVE', s.n+': brak 62 '+s.did+' ('+res.status+')', res.text.trim());
-  renderVerdict(s.n, v, [res]);
-  macroRunning=false; refreshControls();
-}
-function buildP3Buttons(){
-  const box=$('#p3sensors'); if(!box) return;
-  P3_SENSORS.forEach((s,i)=>{ const b=document.createElement('button'); b.className='mini'; b.textContent=s.n;
-    b.style.cssText='font-size:12px;border:1px solid var(--line);border-radius:6px;padding:6px 8px'; b.onclick=()=>readSensor(s); box.appendChild(b); });
-}
-
-/* ---------------- sesje + eksport ---------------- */
-function newSession(){ if(busy()){ errline('nie można zmienić sesji — trwa operacja'); return; }
-  sessionId=uuid(); seq=0; logErrors=0; logDegraded=false; sessionStartedWall=wall(); sessionStartedMono=mono();
-  $('#sesslabel').textContent='sesja: '+sessionId.slice(0,8); $('#logstate').style.display='none';
-  sys('── nowa sesja '+sessionId+' ──'); refreshControls(); }
-async function exportCsv(){
-  if(macroRunning||autoRunning){ errline('eksport po zakończeniu sekwencji auto/makra'); return; }
-  await flushWrites();   // snapshot — działa też w trakcie monitora i po Stop
-  const chunks=await idbAllBySession('chunk',sessionId); const exch=await idbAllBySession('exchange',sessionId);
-  const rows=[];
-  chunks.forEach(c=>rows.push({seq:c.seq,rec:['transport_chunk',c.seq,Math.round(c.ts_mono||0),c.ts_wall||'',c.dir||'',c.exchange_id??'',(c.text||'').replace(/\r/g,'\\r')+' | '+(c.bytes_hex||''),'']}));
-  exch.forEach(e=>{ if(e.lvl==='EXCHANGE')
-      rows.push({seq:e.seq,rec:['obd_exchange',e.seq,Math.round(e.ts_mono_end||0),e.ts_wall||'',e.status||'',e.exchange_id??'',(e.response_text||'').replace(/[\r\n]/g,'\\r'),e.adapter_state||'']});
-    else rows.push({seq:e.seq,rec:[e.lvl||'SYS',e.seq,Math.round(e.ts_mono||0),e.ts_wall||'','','',e.text||JSON.stringify(e),'']}); });
-  const manifest={schema:'xc70.capture_manifest.v1',session_id:sessionId,app_version:APP_VERSION,
-    started_wall:sessionStartedWall,ended_wall:wall(),duration_ms:Math.round(mono()-sessionStartedMono),
-    adapter:{name:device?(device.name||device.id):null,profile:adapterProfile,service_uuid:svcUuid},
-    capture_scope:{transport:'ble',mode:'active-diagnostic-elm',bus:'selected-by-adapter',adapter_state:confirmedState},
-    records:{transport_chunks:chunks.length,exchange_records:exch.length},
-    fuel_mark_last:fuelMark,
-    dropped_count:null,dropped_count_note:'unknown — ELM/BLE nie udostępnia pełnego licznika dropów',log_degraded:logDegraded};
-  rows.push({seq:-1,rec:['capture_manifest',-1,0,sessionStartedWall||'','','',JSON.stringify(manifest),'']});
-  rows.sort((a,b)=>(a.seq??0)-(b.seq??0));
-  const head=['level','seq','ts_mono_ms','ts_wall','dir_or_status','exchange_id','text_or_hex','adapter_state'];
-  const csv=[head,...rows.map(r=>r.rec)].map(r=>r.map(f=>`"${String(f).replace(/"/g,'""')}"`).join(';')).join('\n');
-  const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download='obd_'+sessionId.slice(0,8)+'_'+wall().replace(/[:.]/g,'-')+'.csv'; a.click(); URL.revokeObjectURL(url);
-}
-
-/* ---------------- TRYB JEDNEGO PRZYCISKU: połącz → A,B,F,E → monitor ---------------- */
-async function mainToggle(){
-  if(connected||monitoring||autoRunning){         // STOP wszystkiego
-    monitoring=false; autoRunning=false; updateMain();
-    await disconnect(); return;
-  }
-  autoRunning=true; updateMain();
-  await connect();                                 // requestDevice w geście użytkownika
-  if(!connected){ autoRunning=false; updateMain(); return; }
-  try{ await autoSequence(); }catch(e){ errline('auto: '+e.message); }
-  autoRunning=false; updateMain();
-}
-async function autoSequence(){
-  sys('▶ AUTO — sekwencja: Setup → 11-bit → PIDs → DTC → Monitor live.');
-  await runMacro('A');
-  const vB=await runMacro('B');
-  if(vB && vB.verdict==='FAIL'){ sys('⛔ Brak komunikacji OBD — przerywam. Sprawdź zapłon / pin OBD / adapter.'); return; }
-  await runMacro('F');
-  await runMacro('E');
-  sys('✅ Diagnostyka gotowa — startuję MONITOR live. Paliwo oznaczaj ⛽/🔵. Ten sam przycisk = STOP i rozłącz.');
-  toggleMonitor();                                 // start pętli live (bez await — leci w tle do STOP)
-}
-
-/* ---------------- UI ---------------- */
-$('#btnMain').onclick=mainToggle;
-$('#btnSend').onclick=()=>{ if(busy()){ errline('poczekaj — trwa operacja'); return; } const v=$('#cmd').value.trim(); if(v){ enqueue(v); $('#cmd').value=''; } };
-$('#cmd').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#btnSend').click(); }});
-document.querySelectorAll('button.macro').forEach(b=>b.onclick=()=>runMacro(b.dataset.macro));
-$('#btnMon').onclick=()=>toggleMonitor();
-$('#btnFuelP').onclick=()=>setFuel('BENZYNA');
-$('#btnFuelG').onclick=()=>setFuel('LPG');
-$('#btnFuelClr').onclick=()=>setFuel(null);
-buildP3Buttons();
-$('#btnDid').onclick=()=>readDid($('#didin').value);
-$('#didin').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); readDid($('#didin').value); }});
-document.querySelectorAll('button[data-did]').forEach(b=>b.onclick=()=>{ $('#didin').value=b.dataset.did; readDid(b.dataset.did); });
-$('#btnClear').onclick=()=>{ logEl.innerHTML=''; };
-$('#dlLog').onclick=e=>{ e.preventDefault(); exportCsv(); };
-$('#btnNewSess').onclick=()=>newSession();
-$('#btnDelSess').onclick=async()=>{ if(busy()){ errline('nie można usunąć sesji — trwa operacja'); return; }
-  if(confirm('Usunąć zapisany log tej sesji z IndexedDB?')){ const deleted=sessionId; await flushWrites(); await idbDeleteSession(deleted); newSession(); sys('usunięto poprzednią sesję '+deleted.slice(0,8)); } };
-
-idbOpen().then(ok=>{
-  newSession();
-  sys('Volvo OBD Console v'+APP_VERSION+' — mobile discovery tool. '+(ok?'log→IndexedDB aktywny.':'IndexedDB niedostępny.'));
-  sys('JEDEN PRZYCISK: 🚀 Połącz i diagnozuj → robi Setup, 11-bit, PIDs, DTC i wchodzi w Monitor live. Ten sam przycisk = Stop i rozłącz.');
-  sys('Twoja jedyna robota w trakcie: klikaj ⛽Benzyna / 🔵LPG w chwili przełączenia paliwa. Reszta sama. Pojedyncze makra → „Zaawansowane".');
-  sys('Volvo payload = EKSPERYMENTALNY: użyj tylko definicji z RAW potwierdzonym na TYM aucie.');
-  if(!navigator.bluetooth) errline('navigator.bluetooth niedostępny — Android=Chrome, iOS=Bluefy, https wymagane.');
-});
+dbOpen().then(ok=>{newSession();event("INFO",`XC70 Data Console ${APP_VERSION}. ${ok?"RAW-first aktywny":"IndexedDB niedostępny"}. Brak pola dowolnych komend; każda transmisja przechodzi allowlistę.`);if(!navigator.bluetooth)event("ERROR","Web Bluetooth niedostępny — użyj zgodnej przeglądarki i HTTPS")});
 </script>
 </body>
 </html>
