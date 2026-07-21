@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Volvo OBD Console (XC70 P3) v0.5.1</title>
+<title>Volvo OBD Console (XC70 P3) v0.5.2</title>
 <style>
   :root{
     --bg:#0d1117;--panel:#161b22;--line:#30363d;--txt:#e6edf3;--dim:#8b949e;
@@ -62,7 +62,7 @@
 </head>
 <body>
 <header>
-  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.5.1</span></h1>
+  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.5.2</span></h1>
   <span id="st" class="status">rozłączony</span>
   <span id="dev" class="status" style="display:none"></span>
   <span id="logstate" class="status" style="display:none"></span>
@@ -155,7 +155,7 @@
 const $ = s => document.querySelector(s);
 const logEl=$('#log'), verdictEl=$('#verdict'), liveBox=$('#livebox');
 const enc=new TextEncoder(), dec=new TextDecoder();
-const APP_VERSION='0.5.1', CHUNK=20, DOM_MAX=500;
+const APP_VERSION='0.5.2', CHUNK=20, DOM_MAX=500;
 const T_DEFAULT=3500, T_ATZ=4000, T_POLL=1600;   // dłuższe timeouty (fix STOPPED/TIMEOUT)
 
 // ---- BLE ----
@@ -292,6 +292,21 @@ function parseObd(text,pid){
 // długości danych PID (bajty) — do multi-PID walk
 const PID_LEN={'04':1,'05':1,'06':1,'07':1,'0A':1,'0B':1,'0C':2,'0F':1,'10':2,'11':1,'22':2,'23':2,'24':4,'34':4,'42':2,'03':1};
 // parser MULTI-PID: jedna odpowiedź "41 <pid><data><pid><data>..." → mapa pid->bajty
+// sklej ISO-TP: usuń nagłówek 7E8 i bajty PCI (single 0X / first 1X / consec 2X) → ciągły payload
+function parseIsoTp(text){
+  const lines=(text||'').toUpperCase().replace(/>/g,'').split(/[\r\n]+/).map(s=>s.trim()).filter(Boolean);
+  let out=[];
+  for(const l of lines){
+    const bytes=l.split(/\s+/).filter(t=>/^[0-9A-F]{2}$/.test(t)).map(t=>parseInt(t,16)); // 7E8 (3 znaki) pominięte
+    if(!bytes.length) continue;
+    const pci=bytes[0]&0xF0;
+    if(pci===0x10) out=out.concat(bytes.slice(2));        // first frame: PCI = 1X LL (2 bajty)
+    else if(pci===0x20) out=out.concat(bytes.slice(1));   // consecutive: PCI = 2X (1 bajt)
+    else if(pci===0x00) out=out.concat(bytes.slice(1));   // single: PCI = 0X (1 bajt)
+    else out=out.concat(bytes);
+  }
+  return out.map(b=>b.toString(16).padStart(2,'0')).join(' ');
+}
 function parseMulti(text){
   const u=(text||'').toUpperCase().replace(/[\r>]/g,' ');
   const m=u.match(/\b41((?:\s+[0-9A-F]{2})+)/);   // po ATCRA 7E8 jest jedno 41
@@ -640,27 +655,28 @@ function setFuel(m){ fuelMark=m;
   $('#fuelchip').className='status'+(m?' on':'');
   sys('⛽ znacznik paliwa (ręczny): '+(m||'wyczyszczony'));
   idbPut('exchange',{session:sessionId,seq:++seq,lvl:'FUEL_MARK',ts_mono:mono(),ts_wall:wall(),text:(m||'clear')}); }
-// v0.5.1: auto-detekcja paliwa z ciśnienia USUNIĘTA (na tym aucie pompa benzyny nie gaśnie na LPG,
+// v0.5.2: auto-detekcja paliwa z ciśnienia USUNIĘTA (na tym aucie pompa benzyny nie gaśnie na LPG,
 // rail ~380 kPa na obu paliwach). Paliwo = wyłącznie ręczny znacznik ⛽/🔵. Rail pokazywany informacyjnie.
 function fuelLabel(){ return fuelMark ? fuelMark+' (ręczny)' : '— (kliknij ⛽/🔵)'; }
 
-/* ---------------- MONITOR LIVE (D) v0.5.1 — ATCRA 7E8 + multi-PID w JEDNEJ ramce (≤6 bajtów) ---------------- */
-// każda grupa mieści się w pojedynczej ramce CAN → brak wieloramkowego ISO-TP → parser działa zawsze
-const MON_GROUPS=[['0C','04'], ['05','0B'], ['06','07'], ['34'], ['0A']];  // RPM+load, ECT+MAP, STFT+LTFT, λ, rail
+/* ---------------- MONITOR LIVE (D) v0.5.2 — ISO-TP reassembly + STICKY (bez migania na —) ---------------- */
+// 2 żądania/cykl: g1 = 6 PID (RPM/load/ECT/MAP/STFT/LTFT, wieloramkowe→sklejane), g2 = λ+rail
+const MON_REQ1='010C04050B0607', MON_REQ2='01340A';
 async function toggleMonitor(){
   if(monitoring){ monitoring=false; return; }            // STOP
   if(!connected||macroRunning) return;
   monitoring=true; refreshControls(); liveBox.classList.add('show');
-  sys('▶ MONITOR live v0.5.1 — filtr ECM (ATCRA 7E8) + multi-PID. Blip gazu → patrz λ. Znacznik paliwa ręcznie ⛽/🔵. STOP by zakończyć.');
-  // setup jednorazowy + FILTR tylko na ECM (usuwa bleed 7E9 z sesji 21.07)
+  sys('▶ MONITOR live v0.5.2 — ISO-TP sklejane + sticky (trzyma ostatnią wartość). Blip gazu → λ. Paliwo ⛽/🔵. STOP by zakończyć.');
   for(const c of ['ATE0','ATS1','ATH1','ATCAF1','ATSP6','ATCRA 7E8']){ if(!monitoring) break; await enqueue(c,T_DEFAULT); await new Promise(r=>setTimeout(r,120)); }
-  let cyc=0;
+  const last={}; let cyc=0;                               // STICKY: wartości pamiętane między cyklami
   while(monitoring && connected){
-    const vals={};
-    for(const grp of MON_GROUPS){ if(!monitoring) break;
-      const res=await enqueue('01'+grp.join(''), T_POLL); Object.assign(vals, parseMulti(res.text)); }
-    const g=(pid)=>{ const d=decodeBytes(pid, vals[pid]); return d?d.s:'—'; };
-    const railD=decodeBytes('0A', vals['0A']);
+    for(const req of [MON_REQ1, MON_REQ2]){ if(!monitoring) break;
+      const res=await enqueue(req, T_POLL);
+      Object.assign(last, parseMulti(parseIsoTp(res.text)));  // sklej ISO-TP → walk multi-PID → merge (sticky)
+      await new Promise(r=>setTimeout(r,150));            // oddech: odpowiedź w pełni drenuje przed kolejnym żądaniem
+    }
+    const g=(pid)=>{ const d=decodeBytes(pid, last[pid]); return d?d.s:'—'; };
+    const railD=decodeBytes('0A', last['0A']);
     cyc++;
     const line=`#${cyc}  RPM=${g('0C')}  λ=${g('34')}  `
       +`STFT=${g('06')}%  LTFT=${g('07')}%  `
@@ -668,7 +684,6 @@ async function toggleMonitor(){
       +`rail=${railD?railD.s+'kPa':'—'}  ⛽${fuelLabel()}`;
     liveBox.textContent=line; monline(line);
   }
-  // przywróć nagłówki + brak filtra dla innych funkcji/ręcznych komend (tylko gdy nadal połączony)
   try{ if(writeChar){ await enqueue('ATH1', T_DEFAULT); await enqueue('ATCRA', T_DEFAULT); } }catch(e){}
   monitoring=false; refreshControls();
   sys('■ MONITOR zatrzymany (filtr ECM zdjęty).');
