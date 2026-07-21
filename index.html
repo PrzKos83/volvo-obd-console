@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Volvo OBD Console (XC70 P3) v0.4.4</title>
+<title>Volvo OBD Console (XC70 P3) v0.4.6</title>
 <style>
   :root{
     --bg:#0d1117;--panel:#161b22;--line:#30363d;--txt:#e6edf3;--dim:#8b949e;
@@ -62,35 +62,38 @@
 </head>
 <body>
 <header>
-  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.4.4</span></h1>
+  <h1>🔧 Volvo OBD Console <span style="color:var(--dim);font-weight:400">v0.4.6</span></h1>
   <span id="st" class="status">rozłączony</span>
   <span id="dev" class="status" style="display:none"></span>
   <span id="logstate" class="status" style="display:none"></span>
-  <button id="btnConn" class="primary">Połącz</button>
-  <button id="btnDisc" disabled>Rozłącz</button>
 </header>
 
-<div class="bar">
-  <small>DIAGNOSTYKA 29-bit — A→B→C. Werdykt PASS / FAIL / INCONCLUSIVE</small>
-  <button class="macro" data-macro="A" disabled>A · Setup</button>
-  <button class="macro" data-macro="B" disabled>B · Test 11-bit</button>
-  <button class="macro" data-macro="C" disabled>C · Test 29-bit ⭐</button>
-  <button class="macro" data-macro="X" disabled>Cross-check</button>
-  <button class="macro" data-macro="Z" disabled>Cleanup</button>
+<div class="bar" style="justify-content:center">
+  <button id="btnMain" class="primary" style="font-size:15px;padding:12px 18px;flex:1;max-width:520px">🚀 Połącz i diagnozuj</button>
 </div>
+
 <div class="bar">
-  <small>DIAGNOSTYKA SILNIKA (standard OBD, działa już teraz)</small>
-  <button class="live" id="btnMon" disabled>D · Monitor live (lambda/trymy) ▶</button>
-  <button class="macro" data-macro="E" disabled>E · DTC + Mode06</button>
-  <button class="macro" data-macro="F" disabled>F · Supported PIDs</button>
-</div>
-<div class="bar">
-  <small>ZNACZNIK PALIWA — ground-truth do kalibracji auto-detekcji (kliknij w chwili przełączenia)</small>
+  <small>PALIWO — klikaj w chwili przełączenia (jedyna rzecz do zrobienia ręcznie)</small>
   <span id="fuelchip" class="status">paliwo: —</span>
-  <button class="mini" id="btnFuelP">⛽ oznacz Benzyna</button>
-  <button class="mini" id="btnFuelG">🔵 oznacz LPG</button>
-  <button class="mini" id="btnFuelClr">✖ wyczyść</button>
+  <button class="mini" id="btnFuelP" style="font-size:14px">⛽ Benzyna</button>
+  <button class="mini" id="btnFuelG" style="font-size:14px">🔵 LPG</button>
+  <button class="mini" id="btnFuelClr">✖</button>
 </div>
+
+<details style="margin:0 12px">
+  <summary style="color:var(--dim);font-size:12px;padding:6px 0;cursor:pointer">⚙ Zaawansowane (pojedyncze makra)</summary>
+  <div class="bar" style="border:0;padding-left:0">
+    <small>29-bit A→B→C oraz silnik D/E/F — normalnie robi to auto-przycisk</small>
+    <button class="macro" data-macro="A" disabled>A · Setup</button>
+    <button class="macro" data-macro="B" disabled>B · 11-bit</button>
+    <button class="macro" data-macro="C" disabled>C · 29-bit</button>
+    <button class="macro" data-macro="X" disabled>X · Cross</button>
+    <button class="macro" data-macro="Z" disabled>Z · Cleanup</button>
+    <button class="live" id="btnMon" disabled>D · Monitor ▶</button>
+    <button class="macro" data-macro="E" disabled>E · DTC/06</button>
+    <button class="macro" data-macro="F" disabled>F · PIDs</button>
+  </div>
+</details>
 
 <div id="live"><div class="box" id="livebox"></div></div>
 <div id="verdict"></div>
@@ -136,7 +139,7 @@
 const $ = s => document.querySelector(s);
 const logEl=$('#log'), verdictEl=$('#verdict'), liveBox=$('#livebox');
 const enc=new TextEncoder(), dec=new TextDecoder();
-const APP_VERSION='0.4.4', CHUNK=20, DOM_MAX=500;
+const APP_VERSION='0.4.6', CHUNK=20, DOM_MAX=500;
 const T_DEFAULT=3500, T_ATZ=4000, T_POLL=1600;   // dłuższe timeouty (fix STOPPED/TIMEOUT)
 
 // ---- BLE ----
@@ -270,8 +273,26 @@ function parseObd(text,pid){
   }
   return null;
 }
-function pidVal(text,pid){
-  const b=parseObd(text,pid); if(!b) return null;
+// długości danych PID (bajty) — do multi-PID walk
+const PID_LEN={'04':1,'05':1,'06':1,'07':1,'0A':1,'0B':1,'0C':2,'0F':1,'10':2,'11':1,'22':2,'23':2,'24':4,'34':4,'42':2,'03':1};
+// parser MULTI-PID: jedna odpowiedź "41 <pid><data><pid><data>..." → mapa pid->bajty
+function parseMulti(text){
+  const u=(text||'').toUpperCase().replace(/[\r>]/g,' ');
+  const m=u.match(/\b41((?:\s+[0-9A-F]{2})+)/);   // po ATCRA 7E8 jest jedno 41
+  if(!m) return {};
+  const bytes=m[1].trim().split(/\s+/).map(x=>parseInt(x,16));
+  const out={}; let i=0;
+  while(i<bytes.length){
+    const pid=bytes[i].toString(16).padStart(2,'0').toUpperCase();
+    const len=PID_LEN[pid]; if(len==null) break;           // nieznany PID → nie umiem iść dalej
+    if(i+1+len>bytes.length) break;
+    out[pid]=bytes.slice(i+1,i+1+len); i+=1+len;
+  }
+  return out;
+}
+function pidVal(text,pid){ return decodeBytes(pid, parseObd(text,pid)); }
+function decodeBytes(pid,b){
+  if(!b) return null;
   switch(pid){
     case '0C': return {v:(b[0]*256+b[1])/4, u:'RPM', s:(( b[0]*256+b[1])/4).toFixed(0)};
     case '04': return {v:b[0]*100/255, u:'%load', s:(b[0]*100/255).toFixed(0)};
@@ -434,17 +455,25 @@ async function disconnect(){ monitoring=false; try{ if(device&&device.gatt.conne
 
 function setStatus(t,c){ const el=$('#st'); el.textContent=t; el.className='status'+(c?' '+c:''); }
 function setLogState(t,c){ const el=$('#logstate'); el.style.display=''; el.textContent=t; el.className='status'+(c?' '+c:''); }
-let connected=false, macroRunning=false, monitoring=false;
-function connectedUI(on){ connected=on; $('#btnConn').disabled=on; $('#btnDisc').disabled=!on; refreshControls(); }
-function busy(){ return !!inflight || queue.length>0 || macroRunning || monitoring; }
+let connected=false, macroRunning=false, monitoring=false, autoRunning=false;
+function connectedUI(on){ connected=on; refreshControls(); }
+function busy(){ return !!inflight || queue.length>0 || macroRunning || monitoring || autoRunning; }
+function updateMain(){
+  const active = connected||monitoring||autoRunning;
+  const b=$('#btnMain');
+  b.textContent = autoRunning&&!monitoring ? '⏳ Diagnozuję… (kliknij by przerwać)'
+                : active ? '■ Stop i rozłącz' : '🚀 Połącz i diagnozuj';
+  b.classList.toggle('running', active);
+}
 function refreshControls(){
-  const canMacro=connected&&!macroRunning&&!monitoring;
+  const canMacro=connected&&!macroRunning&&!monitoring&&!autoRunning;
   document.querySelectorAll('button.macro').forEach(b=>b.disabled=!canMacro);
   $('#btnSend').disabled=!canMacro; $('#cmd').disabled=!canMacro;
-  $('#btnMon').disabled=!(connected&&!macroRunning);          // Monitor: aktywny też podczas monitoringu (żeby STOP)
-  $('#btnMon').textContent = monitoring ? 'D · STOP monitor ■' : 'D · Monitor live (lambda/trymy) ▶';
+  $('#btnMon').disabled=!(connected&&!macroRunning&&!autoRunning);
+  $('#btnMon').textContent = monitoring ? 'D · STOP monitor ■' : 'D · Monitor ▶';
   $('#btnMon').classList.toggle('running', monitoring);
   $('#btnNewSess').disabled=busy(); $('#btnDelSess').disabled=busy();
+  updateMain();
 }
 
 /* ---------------- walidacja payloadu Volvo ---------------- */
@@ -575,6 +604,7 @@ async function runMacro(key){
   }
   const verdict=m.evaluate(results); renderVerdict(key,verdict,results); sys(`■ MAKRO ${key}: ${verdict.verdict}`);
   macroRunning=false; refreshControls();
+  return verdict;
 }
 function renderVerdict(key,v,results){
   const box=document.createElement('div'); box.className='v '+v.verdict;
@@ -593,47 +623,40 @@ function setFuel(m){ fuelMark=m;
   $('#fuelchip').className='status'+(m?' on':'');
   sys('⛽ znacznik paliwa (ręczny): '+(m||'wyczyszczony'));
   idbPut('exchange',{session:sessionId,seq:++seq,lvl:'FUEL_MARK',ts_mono:mono(),ts_wall:wall(),text:(m||'clear')}); }
-// WSTĘPNY, NIEKALIBROWANY: pompa benzyny zwykle gaśnie na LPG → wysokie ciśnienie=benzyna, niskie=LPG.
-// Do potwierdzenia testem przełączenia; progi ustawię po Twoich danych.
-function fuelGuess(railKpa){
-  if(fuelMark) return fuelMark+' (ręczny)';
-  if(railKpa==null) return '? (brak PID ciśnienia)';
-  if(railKpa>250) return 'BENZYNA? (pompa pracuje)';
-  if(railKpa<100) return 'LPG? (pompa off)';
-  return '? ('+railKpa.toFixed(0)+' kPa — strefa niepewna)';
-}
+// v0.4.6: auto-detekcja paliwa z ciśnienia USUNIĘTA (na tym aucie pompa benzyny nie gaśnie na LPG,
+// rail ~380 kPa na obu paliwach). Paliwo = wyłącznie ręczny znacznik ⛽/🔵. Rail pokazywany informacyjnie.
+function fuelLabel(){ return fuelMark ? fuelMark+' (ręczny)' : '— (kliknij ⛽/🔵)'; }
 
-/* ---------------- MONITOR LIVE (D) — dekodowane, ze STOP; pod blip gazu + detekcja paliwa ---------------- */
-const MON_PIDS=['0C','34','06','07','0B','04','05'];   // RPM, λ, STFT, LTFT, MAP, load, ECT
-let railPid=null;                                      // wykryty PID ciśnienia rail (0A/23/22)
+/* ---------------- MONITOR LIVE (D) v0.4.6 — ATCRA 7E8 (bez bleedu 7E9) + MULTI-PID (szybko) ---------------- */
+// grupy multi-PID (≤6 PID / żądanie): g1 = RPM/load/ECT/MAP/STFT/LTFT ; g2 = λ + rail(0A)
+const MON_G1=['0C','04','05','0B','06','07'];
+const MON_G2=['34','0A'];
 async function toggleMonitor(){
   if(monitoring){ monitoring=false; return; }            // STOP
   if(!connected||macroRunning) return;
   monitoring=true; refreshControls(); liveBox.classList.add('show');
-  sys('▶ MONITOR live — dekodowane PID + ciśnienie rail. Blip gazu → patrz λ. Przełącz paliwo → patrz ciśnienie/LTFT. STOP by zakończyć.');
-  for(const c of ['ATE0','ATS1','ATH1','ATCAF1','ATSP6']){ if(!monitoring) break; await enqueue(c,T_DEFAULT); await new Promise(r=>setTimeout(r,120)); }
-  // wykryj który PID ciśnienia paliwa działa na tym aucie (raz)
-  railPid=null;
-  for(const pid of ['0A','23','22']){ if(!monitoring) break;
-    const res=await enqueue('01'+pid,T_POLL); if(pidVal(res.text,pid)){ railPid=pid; sys('ciśnienie paliwa: używam PID '+pid); break; } }
-  if(!railPid) sys('⚠ brak standardowego PID ciśnienia paliwa — detekcja paliwa oprze się na podpisie LTFT/λ (słabszym). Odpal F by sprawdzić enhanced.');
-  const pollset = railPid? [...MON_PIDS, railPid] : MON_PIDS;
+  sys('▶ MONITOR live v0.4.6 — filtr ECM (ATCRA 7E8) + multi-PID. Blip gazu → patrz λ. Znacznik paliwa ręcznie ⛽/🔵. STOP by zakończyć.');
+  // setup jednorazowy + FILTR tylko na ECM (usuwa bleed 7E9 z sesji 21.07)
+  for(const c of ['ATE0','ATS1','ATH1','ATCAF1','ATSP6','ATCRA 7E8']){ if(!monitoring) break; await enqueue(c,T_DEFAULT); await new Promise(r=>setTimeout(r,120)); }
   let cyc=0;
   while(monitoring && connected){
-    const vals={};
-    for(const pid of pollset){ if(!monitoring) break;
-      const res=await enqueue('01'+pid, T_POLL); const pv=pidVal(res.text,pid); if(pv) vals[pid]=pv; }
+    const res1=await enqueue('01'+MON_G1.join(''), T_POLL);
+    if(!monitoring) break;
+    const res2=await enqueue('01'+MON_G2.join(''), T_POLL);
+    const m1=parseMulti(res1.text), m2=parseMulti(res2.text);
+    const g=(pid,src)=>{ const d=decodeBytes(pid, src[pid]); return d?d.s:'—'; };
+    const railD=decodeBytes('0A',m2['0A']);
     cyc++;
-    const rail = railPid&&vals[railPid]? vals[railPid].v : null;
-    const line=`#${cyc}  RPM=${vals['0C']?vals['0C'].s:'—'}  λ=${vals['34']?vals['34'].s:'—'}  `
-      +`STFT=${vals['06']?vals['06'].s:'—'}%  LTFT=${vals['07']?vals['07'].s:'—'}%  `
-      +`MAP=${vals['0B']?vals['0B'].s:'—'}kPa  load=${vals['04']?vals['04'].s:'—'}%  ECT=${vals['05']?vals['05'].s:'—'}°C  `
-      +`rail=${rail!=null?rail.toFixed(0)+'kPa':'—'}  ⛽${fuelGuess(rail)}`;
-    liveBox.textContent=line;
-    monline(line);
+    const line=`#${cyc}  RPM=${g('0C',m1)}  λ=${g('34',m2)}  `
+      +`STFT=${g('06',m1)}%  LTFT=${g('07',m1)}%  `
+      +`MAP=${g('0B',m1)}kPa  load=${g('04',m1)}%  ECT=${g('05',m1)}°C  `
+      +`rail=${railD?railD.s+'kPa':'—'}  ⛽${fuelLabel()}`;
+    liveBox.textContent=line; monline(line);
   }
+  // przywróć brak filtra, żeby inne funkcje/ręczne komendy widziały wszystkie ECU
+  try{ await enqueue('ATCRA', T_DEFAULT); }catch(e){}
   monitoring=false; refreshControls();
-  sys('■ MONITOR zatrzymany.');
+  sys('■ MONITOR zatrzymany (filtr ECM zdjęty).');
 }
 
 /* ---------------- sesje + eksport ---------------- */
@@ -655,7 +678,7 @@ async function exportCsv(){
     adapter:{name:device?(device.name||device.id):null,profile:adapterProfile,service_uuid:svcUuid},
     capture_scope:{transport:'ble',mode:'active-diagnostic-elm',bus:'selected-by-adapter',adapter_state:confirmedState},
     records:{transport_chunks:chunks.length,exchange_records:exch.length},
-    fuel_mark_last:fuelMark, fuel_rail_pid:railPid,
+    fuel_mark_last:fuelMark,
     dropped_count:null,dropped_count_note:'unknown — ELM/BLE nie udostępnia pełnego licznika dropów',log_degraded:logDegraded};
   rows.push({seq:-1,rec:['capture_manifest',-1,0,sessionStartedWall||'','','',JSON.stringify(manifest),'']});
   rows.sort((a,b)=>(a.seq??0)-(b.seq??0));
@@ -665,9 +688,31 @@ async function exportCsv(){
   const a=document.createElement('a'); a.href=url; a.download='obd_'+sessionId.slice(0,8)+'_'+wall().replace(/[:.]/g,'-')+'.csv'; a.click(); URL.revokeObjectURL(url);
 }
 
+/* ---------------- TRYB JEDNEGO PRZYCISKU: połącz → A,B,F,E → monitor ---------------- */
+async function mainToggle(){
+  if(connected||monitoring||autoRunning){         // STOP wszystkiego
+    monitoring=false; autoRunning=false; updateMain();
+    await disconnect(); return;
+  }
+  autoRunning=true; updateMain();
+  await connect();                                 // requestDevice w geście użytkownika
+  if(!connected){ autoRunning=false; updateMain(); return; }
+  try{ await autoSequence(); }catch(e){ errline('auto: '+e.message); }
+  autoRunning=false; updateMain();
+}
+async function autoSequence(){
+  sys('▶ AUTO — sekwencja: Setup → 11-bit → PIDs → DTC → Monitor live.');
+  await runMacro('A');
+  const vB=await runMacro('B');
+  if(vB && vB.verdict==='FAIL'){ sys('⛔ Brak komunikacji OBD — przerywam. Sprawdź zapłon / pin OBD / adapter.'); return; }
+  await runMacro('F');
+  await runMacro('E');
+  sys('✅ Diagnostyka gotowa — startuję MONITOR live. Paliwo oznaczaj ⛽/🔵. Ten sam przycisk = STOP i rozłącz.');
+  toggleMonitor();                                 // start pętli live (bez await — leci w tle do STOP)
+}
+
 /* ---------------- UI ---------------- */
-$('#btnConn').onclick=connect;
-$('#btnDisc').onclick=disconnect;
+$('#btnMain').onclick=mainToggle;
 $('#btnSend').onclick=()=>{ if(busy()){ errline('poczekaj — trwa operacja'); return; } const v=$('#cmd').value.trim(); if(v){ enqueue(v); $('#cmd').value=''; } };
 $('#cmd').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#btnSend').click(); }});
 document.querySelectorAll('button.macro').forEach(b=>b.onclick=()=>runMacro(b.dataset.macro));
@@ -684,8 +729,8 @@ $('#btnDelSess').onclick=async()=>{ if(busy()){ errline('nie można usunąć ses
 idbOpen().then(ok=>{
   newSession();
   sys('Volvo OBD Console v'+APP_VERSION+' — mobile discovery tool. '+(ok?'log→IndexedDB aktywny.':'IndexedDB niedostępny.'));
-  sys('29-bit: A→B→C. Silnik: D Monitor (blip gazu → λ; przełącz paliwo → ciśnienie rail/LTFT), E DTC+Mode06, F supported PIDs.');
-  sys('Paliwo: klikaj ⛽Benzyna/🔵LPG w chwili przełączenia (ground-truth). Auto-guess z ciśnienia rail = WSTĘPNY, kalibracja po Twoich danych.');
+  sys('JEDEN PRZYCISK: 🚀 Połącz i diagnozuj → robi Setup, 11-bit, PIDs, DTC i wchodzi w Monitor live. Ten sam przycisk = Stop i rozłącz.');
+  sys('Twoja jedyna robota w trakcie: klikaj ⛽Benzyna / 🔵LPG w chwili przełączenia paliwa. Reszta sama. Pojedyncze makra → „Zaawansowane".');
   sys('Volvo payload = EKSPERYMENTALNY: użyj tylko definicji z RAW potwierdzonym na TYM aucie.');
   if(!navigator.bluetooth) errline('navigator.bluetooth niedostępny — Android=Chrome, iOS=Bluefy, https wymagane.');
 });
