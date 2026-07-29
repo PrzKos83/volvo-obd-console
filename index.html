@@ -81,7 +81,10 @@
 
 const APP_VERSION="0.7.3";
 /* Muszą być zadeklarowane przed pierwszym użyciem niżej (const nie jest hoistowany). */
-const MISFIRE_DID="DAB6", MISFIRE_CYL=6;
+/* MISFIRE_READS: odczytów pod jednym przełączeniem nagłówka. Zmierzone na realnej serii:
+   4 odczyty dają tylko ×1,1 więcej zarejestrowanych wypadów, a wydłużają cykl o ~0,5 s,
+   przez co karty wpadają w STALE. Zostaje 1; stała pozostaje na wypadek szybszego adaptera. */
+const MISFIRE_DID="DAB6", MISFIRE_CYL=6, MISFIRE_READS=1;
 const DB_NAME="xc70_obd_v060";
 const CHUNK_SIZE=20, DEFAULT_TIMEOUT=3500, POLL_TIMEOUT=1900, DRAIN_QUIET_MS=350, DRAIN_MAX_MS=1800;
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -165,6 +168,22 @@ function refresh(){
 const NRC={"10":"generalReject","11":"serviceNotSupported","12":"subFunctionNotSupported","13":"incorrectLength","22":"conditionsNotCorrect","31":"requestOutOfRange","33":"securityAccessDenied","78":"responsePending"};
 function cleanHex(text){return (text||"").toUpperCase().split(/[\r\n>]+/).map(x=>x.trim()).filter(Boolean).filter(x=>!/^SEARCHING/.test(x)&&!/^BUS INIT/.test(x)).join(" ").replace(/[^0-9A-F]/g,"")}
 function classify(text){const u=(text||"").toUpperCase();if(u.includes("BUFFER FULL")){counters.bufferFull++;return{status:"BUFFER_FULL"}}if(u.includes("NO DATA"))return{status:"NO_DATA"};if(u.includes("UNABLE TO CONNECT"))return{status:"NO_CONNECT"};if(u.includes("CAN ERROR")||u.includes("BUS ERROR")||u.includes("RX ERROR"))return{status:"BUS_ERROR"};if(u.includes("STOPPED"))return{status:"STOPPED"};if(u.includes("?"))return{status:"AT_UNSUPPORTED"};const h=cleanHex(text),m=h.match(/7F([0-9A-F]{2})([0-9A-F]{2})/);if(m)return{status:"NEGATIVE_RESPONSE",service:m[1],nrc:m[2],nrcName:NRC[m[2]]||"unknown"};if(u.includes("ERROR"))return{status:"ERROR"};return{status:"RESPONSE"}}
+/* ELM z CAF1 poprzedza odpowiedź wieloramkową łączną długością (np. "00F") i łamie dane
+   na linie "0:", "1:". Sama sygnatura 62xxxx jest już w pierwszej ramce, więc nie wolno
+   na niej kończyć — inaczej payload zostaje ucięty. */
+function declaredLength(text){const m=(text||"").toUpperCase().match(/(?:^|[\r\n])\s*([0-9A-F]{3})\s*(?:[\r\n]|$)/);return m?parseInt(m[1],16):null}
+function dataByteCount(text){return ((text||"").toUpperCase().replace(/[>\r\n]/g," ").split(/\s+/).filter(t=>/^[0-9A-F]{2}$/.test(t))).length}
+function responseComplete(text,exp){
+  const hx=cleanHex(text),pos=exp.positive||[];
+  if(!pos.length||!pos.every(s=>hx.includes(s)))return false;
+  /* Sama sygnatura nie wystarcza przy wieloramkowej odpowiedzi — 62xxxx jest już w pierwszej
+     ramce. Gdy ISO-TP podał długość, czekamy na komplet bajtów.
+     Świadomie NIE zamykamy na samej długości: w buforze bywają resztki poprzedniej
+     odpowiedzi, które domknęłyby licznik przed nadejściem właściwej ramki (mierzone:
+     traciło to 29/29 odczytów lambdy). Wolniej, ale kompletnie. */
+  const need=declaredLength(text);
+  return need==null?true:dataByteCount(text)>=need;
+}
 function expectation(cmd){const c=cmd.replace(/\s/g,"");if(c.startsWith("AT"))return{kind:"AT"};if(c==="03")return{kind:"OBD",positive:["43"]};if(c==="06")return{kind:"OBD",positive:["46"]};if(c==="07")return{kind:"OBD",positive:["47"]};if(c.startsWith("09"))return{kind:"OBD",positive:["49"+c.slice(2,4)]};if(c.startsWith("01"))return{kind:"OBD",positive:(c.slice(2).match(/../g)||[]).map(p=>"41"+p)};if(c.startsWith("22"))return{kind:"UDS",positive:["62"+c.slice(2,6)],negativeService:"22"};return{kind:"UNKNOWN",positive:[]}}
 function correlate(cmd,text,meta){const exp=expectation(cmd);if(exp.kind==="AT")return{pass:["RESPONSE","AT_UNSUPPORTED"].includes(meta.status),reason:"adapter_command"};const h=cleanHex(text);if(meta.status==="NEGATIVE_RESPONSE")return{pass:meta.service===exp.negativeService||exp.kind==="OBD",reason:"negative_response",nrc:meta.nrc};const hits=(exp.positive||[]).filter(x=>h.includes(x));return{pass:hits.length>0,reason:hits.length?"positive_signature":"signature_missing",expected:exp.positive,observed:h.slice(0,160)}}
 
@@ -180,7 +199,7 @@ function publicResult(ex){return{cmd:ex.cmd,text:ex.text||"",status:ex.status,me
 function onNotify(ev){const dv=ev.target.value,bytes=new Uint8Array(dv.buffer,dv.byteOffset,dv.byteLength),text=dec.decode(bytes);logChunk("RX",bytes,text,inflight?inflight.id:(drain?drain.previousExchangeId:null));if(drain){drain.text+=text;drain.touch();if(drain.text.includes(">")){const d=drain;drain=null;counters.late++;event("ERROR","LATE_RESPONSE odizolowana",{previous_exchange_id:d.previousExchangeId,raw_text:d.text});pump();refresh()}return}if(!inflight){counters.orphan++;event("ERROR","ORPHAN_RX",{raw_text:text});return}rxBuffer+=text;
   /* EARLY-COMPLETE: adapter strumieniuje ramki bez '>'. Gdy komplet oczekiwanych sygnatur jest już w buforze, finalizuj natychmiast (świeża odpowiedź ~65 ms), nie czekaj na prompt ani timeout. */
   const exp=expectation(inflight.cmd);
-  if(inflight.kind!=="AT"&&exp.positive&&exp.positive.length){const hx=cleanHex(rxBuffer);if(exp.positive.every(s=>hx.includes(s))){const ex=inflight,full=rxBuffer;rxBuffer="";counters.salvaged++;finishExchange(ex,"RESPONSE",full,{pass:true,reason:"positive_signature",early:true,expected:exp.positive},classify(full));return}}
+  if(inflight.kind!=="AT"&&exp.positive&&exp.positive.length&&responseComplete(rxBuffer,exp)){const ex=inflight,full=rxBuffer;rxBuffer="";counters.salvaged++;finishExchange(ex,"RESPONSE",full,{pass:true,reason:"positive_signature",early:true,expected:exp.positive},classify(full));return}
   if(!rxBuffer.includes(">"))return;
   const ex=inflight,full=rxBuffer;rxBuffer="";const meta=classify(full),corr=correlate(ex.cmd,full,meta);
   const terminal=["NO_DATA","NO_CONNECT","BUS_ERROR","BUFFER_FULL","NEGATIVE_RESPONSE","AT_UNSUPPORTED"].includes(meta.status);
@@ -228,15 +247,24 @@ function decodePid(pid,b){if(!b)return null;const u=(value,unit,digits=1)=>({val
 function decodeMisfire(bytes){if(!bytes||bytes.length<MISFIRE_CYL*2)return null;const out=[];
   for(let c=0;c<MISFIRE_CYL;c++){const hi=bytes[c*2],lo=bytes[c*2+1];if(hi==null||lo==null)return null;out.push((hi<<8)|lo)}
   return out}
-/* Akumulacja: dodatnie przyrosty względem poprzedniego odczytu; reset licznika ECU nie odejmuje. */
-function applyMisfire(raw,source,rawHex){
-  if(misfirePrev)for(let c=0;c<MISFIRE_CYL;c++){const d=raw[c]-misfirePrev[c];if(d>0)misfireTotals[c]+=d}
+/* Akumulacja przyrostów. Licznik ECU jest kroczący i sam się zeruje; gdy spadnie, bieżąca
+   wartość narosła już od zera i trzeba ją doliczyć — inaczej gubimy wypady sprzed zerowania.
+   Zmierzone na 15 271 odczytach: bez tego tracimy ok. 1,4% zdarzeń przy gęstym odpycie
+   i wyraźnie więcej przy rzadkim. */
+function accumulateMisfire(raw){
+  if(misfirePrev)for(let c=0;c<MISFIRE_CYL;c++){
+    const d=raw[c]-misfirePrev[c];
+    if(d>0)misfireTotals[c]+=d; else if(d<0)misfireTotals[c]+=raw[c];
+  }
   misfirePrev=raw.slice();
+}
+function emitMisfire(source,rawHex){
   for(let c=0;c<MISFIRE_CYL;c++)
     acceptSample(`powertrain.misfire.cyl${c+1}`,{value:misfireTotals[c],unit:"wypady",display:String(misfireTotals[c])},source,rawHex,"confirmed_did_order_inferred");
 }
+function applyMisfire(raw,source,rawHex){accumulateMisfire(raw);emitMisfire(source,rawHex)}
 const PID_SIGNALS={"0C":"powertrain.engine.speed.obd","04":"powertrain.engine.load","05":"powertrain.coolant.temperature","06":"powertrain.fuel.trim.short","07":"powertrain.fuel.trim.long","0B":"powertrain.intake.map","0A":"powertrain.fuel.rail_pressure.obd","34":"powertrain.lambda.b1s1"};
-function acceptSample(signalId,decoded,source,raw,confidence="standard_obd"){const now=mono(),sample={session:sessionId,seq:++seq,sample_id:uuid(),signal_id:signalId,source_exchange_id:source.exchangeId,endpoint_id:source.endpoint||"ECM",request_payload:source.cmd,response_payload_raw:raw,value:decoded.value,unit:decoded.unit,observed_at_monotonic_ms:now,observed_at_wallclock:wall(),quality_status:"valid",acquisition_mode:"active_poll",decoder_id:signalId,decoder_version:APP_VERSION,definition_pack_hash:"builtin-v0.6.1",definition_confidence:confidence,reject_reason:null,fuel_state:fuelState};sessionSampleCount++;dbPut("sample",sample);lastSignals.set(signalId,{...sample,display:decoded.display});view("sample",`${signalId}=${decoded.display} ${decoded.unit}`)}
+function acceptSample(signalId,decoded,source,raw,confidence="standard_obd"){const now=mono(),sample={session:sessionId,seq:++seq,sample_id:uuid(),signal_id:signalId,source_exchange_id:source.exchangeId,endpoint_id:source.endpoint||"ECM",request_payload:source.cmd,response_payload_raw:raw,value:decoded.value,unit:decoded.unit,observed_at_monotonic_ms:now,observed_at_wallclock:wall(),quality_status:"valid",acquisition_mode:"active_poll",decoder_id:signalId,decoder_version:APP_VERSION,definition_pack_hash:"builtin-v0.7.3",definition_confidence:confidence,reject_reason:null,fuel_state:fuelState};sessionSampleCount++;dbPut("sample",sample);lastSignals.set(signalId,{...sample,display:decoded.display});view("sample",`${signalId}=${decoded.display} ${decoded.unit}`)}
 function renderCards(){
   const labels={"powertrain.engine.speed.obd":"Obroty silnika","powertrain.engine.load":"Obciążenie","powertrain.coolant.temperature":"Płyn chłodzący","powertrain.fuel.trim.short":"Korekta STFT","powertrain.fuel.trim.long":"Korekta LTFT","powertrain.intake.map":"Ciśnienie MAP","powertrain.fuel.rail_pressure.obd":"Ciśnienie paliwa","powertrain.lambda.b1s1":"Lambda B1S1","powertrain.engine.speed.enhanced":"Obroty · DID","powertrain.fuel.rail_pressure.enhanced":"Rail · DID","powertrain.misfire.cyl1":"Wypady CYL 1","powertrain.misfire.cyl2":"Wypady CYL 2","powertrain.misfire.cyl3":"Wypady CYL 3","powertrain.misfire.cyl4":"Wypady CYL 4","powertrain.misfire.cyl5":"Wypady CYL 5","powertrain.misfire.cyl6":"Wypady CYL 6"};
   const priority=["powertrain.misfire.cyl1","powertrain.misfire.cyl2","powertrain.misfire.cyl3","powertrain.misfire.cyl4","powertrain.misfire.cyl5","powertrain.misfire.cyl6","powertrain.engine.speed.obd","powertrain.engine.speed.enhanced","powertrain.lambda.b1s1","powertrain.fuel.rail_pressure.enhanced","powertrain.fuel.rail_pressure.obd","powertrain.engine.load","powertrain.intake.map","powertrain.coolant.temperature","powertrain.fuel.trim.short","powertrain.fuel.trim.long"];
@@ -259,11 +287,19 @@ async function monitor(){monitoring=true;refresh();event("INFO","Monitor start: 
   if(!monitoring||!connected)break;
   /* Wypady per cylinder: adresowanie fizyczne do ECM (22 wymaga 7E0), potem powrót na 7DF dla trybu 01. */
   await runCommands(["ATSH 7E0"]);
-  const mres=await requestVehicle("22"+MISFIRE_DID,"ECM",POLL_TIMEOUT);
-  if(mres.correlation&&mres.correlation.pass&&(!mres.meta||mres.meta.status!=="NEGATIVE_RESPONSE")){
-    const bytes=extractDidData(mres.text,MISFIRE_DID),rawCounts=decodeMisfire(bytes);
-    if(rawCounts)applyMisfire(rawCounts,mres,bytes.slice(0,MISFIRE_CYL*2).map(x=>x.toString(16).padStart(2,"0")).join(" "));
+  /* Kilka odczytów pod jednym przełączeniem nagłówka. Licznik ECU zeruje się często, więc
+     rzadkie próbkowanie gubi zdarzenia; gęstszy odpyt kosztuje tu tylko ~0,1 s na odczyt. */
+  let lastRes=null,lastHex=null;
+  for(let k=0;k<MISFIRE_READS;k++){
+    if(!monitoring||!connected)break;
+    const mres=await requestVehicle("22"+MISFIRE_DID,"ECM",POLL_TIMEOUT);
+    if(mres.correlation&&mres.correlation.pass&&(!mres.meta||mres.meta.status!=="NEGATIVE_RESPONSE")){
+      const bytes=extractDidData(mres.text,MISFIRE_DID),rawCounts=decodeMisfire(bytes);
+      if(rawCounts){accumulateMisfire(rawCounts);lastRes=mres;lastHex=bytes.slice(0,MISFIRE_CYL*2).map(x=>x.toString(16).padStart(2,"0")).join(" ")}
+    }
+    if(k<MISFIRE_READS-1)await delay(120);
   }
+  if(lastRes)emitMisfire(lastRes,lastHex);   /* jedna próbka na cykl, nie na odczyt */
   await runCommands(["ATSH 7DF"]);
   await delay(180);
 }monitoring=false;refresh();event("INFO","Monitor zatrzymany")}
