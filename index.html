@@ -79,7 +79,7 @@
 <script>
 "use strict";
 
-const APP_VERSION="0.7.1";
+const APP_VERSION="0.7.2";
 const DB_NAME="xc70_obd_v060";
 const CHUNK_SIZE=20, DEFAULT_TIMEOUT=3500, POLL_TIMEOUT=1900, DRAIN_QUIET_MS=350, DRAIN_MAX_MS=1800;
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -93,11 +93,17 @@ let adapterProfile="unknown",serviceUuid=null,sessionId=null,sessionStartedWall=
 let queue=[],inflight=null,rxBuffer="",responseTimer=null,drain=null;
 let adapterState={protocol:null,header:null,receiver:null,caf:null,headers:null};
 let fuelState=null, lastSignals=new Map(), sessionSampleCount=0, sessionExchangeCount=0, counters={timeouts:0,late:0,orphan:0,mismatch:0,bufferFull:0,rejected:0,salvaged:0};
+/* Liczniki ECU dla wypadów są kroczące i zerują się, więc sumujemy dodatnie przyrosty w obrębie sesji. */
+let misfirePrev=null, misfireTotals=new Array(MISFIRE_CYL).fill(0);
 
 const DID_DEFS={
   "ECM:D91C":{signal_id:"powertrain.engine.speed.enhanced",name:"RPM enhanced",codec:"float32_be",unit:"rpm",confidence:"confirmed_vehicle",min:0,max:8000},
-  "ECM:D9C1":{signal_id:"powertrain.fuel.rail_pressure.enhanced",name:"Rail enhanced",codec:"float32_be",unit:"kPa",confidence:"confirmed_vehicle",min:0,max:30000}
+  "ECM:D9C1":{signal_id:"powertrain.fuel.rail_pressure.enhanced",name:"Rail enhanced",codec:"float32_be",unit:"kPa",confidence:"confirmed_vehicle",min:0,max:30000},
+  /* Wypady zapłony per cylinder: 12 B = 6 × uint16 BE. Potwierdzone z logu Car Scanner na tym aucie
+     (16,5 tys. odczytów). Kolejność słowo0..5 = CYL1..6 wnioskowana: rozkład zgadza się z objawem (CYL6 > CYL5). */
+  "ECM:DAB6":{signal_id:"powertrain.misfire.percyl",name:"Wypady per cylinder",codec:"misfire6_u16be",unit:"wypady",confidence:"confirmed_did_order_inferred",min:0,max:65535}
 };
+const MISFIRE_DID="DAB6", MISFIRE_CYL=6;
 const CANDIDATES=[
   {ecu:"ECM",did:"D9DC",name:"Oil temp"},{ecu:"ECM",did:"D9F9",name:"Exhaust T2"},
   {ecu:"ECM",did:"D916",name:"Air flow"},{ecu:"ECM",did:"D99C",name:"Fuel temp"},
@@ -112,7 +118,7 @@ const MONITOR_PIDS=new Set(Object.keys(PID_LEN));
 function commandPolicy(raw){
   const cmd=String(raw||"").trim().toUpperCase().replace(/\s+/g," ");
   const compact=cmd.replace(/\s/g,"");
-  const atAllowed=[/^ATZ$/,/^ATI$/,/^AT@1$/,/^ATE[01]$/,/^ATL[01]$/,/^ATS[01]$/,/^ATH[01]$/,/^ATCAF[01]$/,/^ATSP[06]$/,/^ATDP$/,/^ATDPN$/,/^ATCRA(?: 7E[89])?$/,/^ATSH 7E[01]$/];
+  const atAllowed=[/^ATZ$/,/^ATI$/,/^AT@1$/,/^ATE[01]$/,/^ATL[01]$/,/^ATS[01]$/,/^ATH[01]$/,/^ATCAF[01]$/,/^ATSP[06]$/,/^ATDP$/,/^ATDPN$/,/^ATCRA(?: 7E[89])?$/,/^ATSH (?:7DF|7E[01])$/];
   if(cmd.startsWith("AT")) return {allowed:atAllowed.some(r=>r.test(cmd)),cmd,kind:"AT"};
   if(["03","06","07","0902","0904","0906"].includes(compact)) return {allowed:true,cmd:compact,kind:"OBD"};
   if(/^01(?:[0-9A-F]{2})+$/.test(compact)){
@@ -217,11 +223,22 @@ function parsePidMap(text){
   return out;
 }
 function decodePid(pid,b){if(!b)return null;const u=(value,unit,digits=1)=>({value,unit,display:Number(value).toFixed(digits)});switch(pid){case"0C":return u((b[0]*256+b[1])/4,"rpm",0);case"04":return u(b[0]*100/255,"%",0);case"05":return u(b[0]-40,"°C",0);case"06":case"07":return u((b[0]-128)*100/128,"%",1);case"0B":return u(b[0],"kPa",0);case"0A":return u(b[0]*3,"kPa",0);case"34":return u(((b[0]*256+b[1])/65536)*2,"λ",3);default:return null}}
+/* 12 B → 6 × uint16 BE. Zwraca surowe liczniki ECU (bez akumulacji). */
+function decodeMisfire(bytes){if(!bytes||bytes.length<MISFIRE_CYL*2)return null;const out=[];
+  for(let c=0;c<MISFIRE_CYL;c++){const hi=bytes[c*2],lo=bytes[c*2+1];if(hi==null||lo==null)return null;out.push((hi<<8)|lo)}
+  return out}
+/* Akumulacja: dodatnie przyrosty względem poprzedniego odczytu; reset licznika ECU nie odejmuje. */
+function applyMisfire(raw,source,rawHex){
+  if(misfirePrev)for(let c=0;c<MISFIRE_CYL;c++){const d=raw[c]-misfirePrev[c];if(d>0)misfireTotals[c]+=d}
+  misfirePrev=raw.slice();
+  for(let c=0;c<MISFIRE_CYL;c++)
+    acceptSample(`powertrain.misfire.cyl${c+1}`,{value:misfireTotals[c],unit:"wypady",display:String(misfireTotals[c])},source,rawHex,"confirmed_did_order_inferred");
+}
 const PID_SIGNALS={"0C":"powertrain.engine.speed.obd","04":"powertrain.engine.load","05":"powertrain.coolant.temperature","06":"powertrain.fuel.trim.short","07":"powertrain.fuel.trim.long","0B":"powertrain.intake.map","0A":"powertrain.fuel.rail_pressure.obd","34":"powertrain.lambda.b1s1"};
 function acceptSample(signalId,decoded,source,raw,confidence="standard_obd"){const now=mono(),sample={session:sessionId,seq:++seq,sample_id:uuid(),signal_id:signalId,source_exchange_id:source.exchangeId,endpoint_id:source.endpoint||"ECM",request_payload:source.cmd,response_payload_raw:raw,value:decoded.value,unit:decoded.unit,observed_at_monotonic_ms:now,observed_at_wallclock:wall(),quality_status:"valid",acquisition_mode:"active_poll",decoder_id:signalId,decoder_version:APP_VERSION,definition_pack_hash:"builtin-v0.6.1",definition_confidence:confidence,reject_reason:null,fuel_state:fuelState};sessionSampleCount++;dbPut("sample",sample);lastSignals.set(signalId,{...sample,display:decoded.display});view("sample",`${signalId}=${decoded.display} ${decoded.unit}`)}
 function renderCards(){
-  const labels={"powertrain.engine.speed.obd":"Obroty silnika","powertrain.engine.load":"Obciążenie","powertrain.coolant.temperature":"Płyn chłodzący","powertrain.fuel.trim.short":"Korekta STFT","powertrain.fuel.trim.long":"Korekta LTFT","powertrain.intake.map":"Ciśnienie MAP","powertrain.fuel.rail_pressure.obd":"Ciśnienie paliwa","powertrain.lambda.b1s1":"Lambda B1S1","powertrain.engine.speed.enhanced":"Obroty · DID","powertrain.fuel.rail_pressure.enhanced":"Rail · DID"};
-  const priority=["powertrain.engine.speed.obd","powertrain.engine.speed.enhanced","powertrain.lambda.b1s1","powertrain.fuel.rail_pressure.enhanced","powertrain.fuel.rail_pressure.obd","powertrain.engine.load","powertrain.intake.map","powertrain.coolant.temperature","powertrain.fuel.trim.short","powertrain.fuel.trim.long"];
+  const labels={"powertrain.engine.speed.obd":"Obroty silnika","powertrain.engine.load":"Obciążenie","powertrain.coolant.temperature":"Płyn chłodzący","powertrain.fuel.trim.short":"Korekta STFT","powertrain.fuel.trim.long":"Korekta LTFT","powertrain.intake.map":"Ciśnienie MAP","powertrain.fuel.rail_pressure.obd":"Ciśnienie paliwa","powertrain.lambda.b1s1":"Lambda B1S1","powertrain.engine.speed.enhanced":"Obroty · DID","powertrain.fuel.rail_pressure.enhanced":"Rail · DID","powertrain.misfire.cyl1":"Wypady CYL 1","powertrain.misfire.cyl2":"Wypady CYL 2","powertrain.misfire.cyl3":"Wypady CYL 3","powertrain.misfire.cyl4":"Wypady CYL 4","powertrain.misfire.cyl5":"Wypady CYL 5","powertrain.misfire.cyl6":"Wypady CYL 6"};
+  const priority=["powertrain.misfire.cyl1","powertrain.misfire.cyl2","powertrain.misfire.cyl3","powertrain.misfire.cyl4","powertrain.misfire.cyl5","powertrain.misfire.cyl6","powertrain.engine.speed.obd","powertrain.engine.speed.enhanced","powertrain.lambda.b1s1","powertrain.fuel.rail_pressure.enhanced","powertrain.fuel.rail_pressure.obd","powertrain.engine.load","powertrain.intake.map","powertrain.coolant.temperature","powertrain.fuel.trim.short","powertrain.fuel.trim.long"];
   const entries=[...lastSignals.entries()].sort((a,b)=>{const ai=priority.indexOf(a[0]),bi=priority.indexOf(b[0]);return(ai<0?99:ai)-(bi<0?99:bi)}),now=mono();cardsEl.innerHTML="";
   if(!entries.length){cardsEl.innerHTML='<div class="empty-state">Po połączeniu pojawią się tutaj zweryfikowane parametry silnika.</div>';return}
   entries.forEach(([id,s],index)=>{const age=Math.max(0,now-s.observed_at_monotonic_ms),stale=age>5000,card=document.createElement("div");card.className="card"+(stale?" stale":"")+(index===0?" hero-card":"");card.innerHTML='<div class="name"></div><div class="value"></div><div class="meta"><span class="fresh"></span><span class="source"></span></div>';card.querySelector(".name").textContent=labels[id]||id;card.querySelector(".value").textContent=`${s.display} ${s.unit}`;card.querySelector(".fresh").textContent=(stale?"STALE":"● LIVE")+` · ${(age/1000).toFixed(1)}s`;card.querySelector(".source").textContent=` · ex ${s.source_exchange_id}`;cardsEl.appendChild(card)})
@@ -236,18 +253,34 @@ function updateSessionUi(){
 }
 setInterval(()=>{renderCards();updateSessionUi()},1000);
 
-async function monitor(){monitoring=true;refresh();event("INFO","Monitor start: CAF1 + ATH0, odpowiedzi tylko po korelacji");await runCommands(["ATE0","ATL0","ATS1","ATH0","ATCAF1","ATSP6","ATCRA 7E8"]);const groups=["010C04050B0607","01340A"];while(monitoring&&connected){for(const cmd of groups){if(!monitoring||!connected)break;const res=await requestVehicle(cmd,"ECM",POLL_TIMEOUT);if(res.correlation&&res.correlation.pass){const map=parsePidMap(res.text);for(const[pid,bytes]of Object.entries(map)){const decoded=decodePid(pid,bytes);if(decoded&&PID_SIGNALS[pid])acceptSample(PID_SIGNALS[pid],decoded,res,bytes.map(x=>x.toString(16).padStart(2,"0")).join(" "))}}await delay(180)}}monitoring=false;refresh();event("INFO","Monitor zatrzymany")}
+async function monitor(){monitoring=true;refresh();event("INFO","Monitor start: CAF1 + ATH0, odpowiedzi tylko po korelacji");await runCommands(["ATE0","ATL0","ATS1","ATH0","ATCAF1","ATSP6","ATCRA 7E8","ATSH 7DF"]);const groups=["010C04050B0607","01340A"];while(monitoring&&connected){
+  for(const cmd of groups){if(!monitoring||!connected)break;const res=await requestVehicle(cmd,"ECM",POLL_TIMEOUT);if(res.correlation&&res.correlation.pass){const map=parsePidMap(res.text);for(const[pid,bytes]of Object.entries(map)){const decoded=decodePid(pid,bytes);if(decoded&&PID_SIGNALS[pid])acceptSample(PID_SIGNALS[pid],decoded,res,bytes.map(x=>x.toString(16).padStart(2,"0")).join(" "))}}await delay(180)}
+  if(!monitoring||!connected)break;
+  /* Wypady per cylinder: adresowanie fizyczne do ECM (22 wymaga 7E0), potem powrót na 7DF dla trybu 01. */
+  await runCommands(["ATSH 7E0"]);
+  const mres=await requestVehicle("22"+MISFIRE_DID,"ECM",POLL_TIMEOUT);
+  if(mres.correlation&&mres.correlation.pass&&(!mres.meta||mres.meta.status!=="NEGATIVE_RESPONSE")){
+    const bytes=extractDidData(mres.text,MISFIRE_DID),rawCounts=decodeMisfire(bytes);
+    if(rawCounts)applyMisfire(rawCounts,mres,bytes.slice(0,MISFIRE_CYL*2).map(x=>x.toString(16).padStart(2,"0")).join(" "));
+  }
+  await runCommands(["ATSH 7DF"]);
+  await delay(180);
+}monitoring=false;refresh();event("INFO","Monitor zatrzymany")}
 
 function f32be(bytes){const a=new Uint8Array(bytes),dv=new DataView(a.buffer,a.byteOffset,a.byteLength);return dv.getFloat32(0,false)}
 function extractDidData(text,did){const tokens=responseTokens(text);for(let i=0;i+2<tokens.length;i++)if(tokens[i]==="62"&&(tokens[i+1]+tokens[i+2])===did)return tokens.slice(i+3).map(x=>parseInt(x,16));return null}
 function candidateViews(bytes){const out=["hex="+bytes.map(x=>x.toString(16).padStart(2,"0")).join(" ")];if(bytes.length>=1)out.push("u8="+bytes[0],"s8="+(bytes[0]>127?bytes[0]-256:bytes[0]));if(bytes.length>=2){const u16=bytes[0]*256+bytes[1];out.push("u16be="+u16,"s16be="+(u16>32767?u16-65536:u16))}if(bytes.length>=4)out.push("f32be="+f32be(bytes.slice(0,4)));return out.join(" · ")}
 function decodeDefinition(def,bytes){if(def.codec==="float32_be"&&bytes.length>=4)return{value:f32be(bytes.slice(0,4)),unit:def.unit,display:f32be(bytes.slice(0,4)).toFixed(def.unit==="rpm"?0:2)};return null}
-async function readDid(didRaw,ecu){const did=String(didRaw||"").toUpperCase().replace(/[^0-9A-F]/g,"");if(!/^[0-9A-F]{4}$/.test(did)){event("ERROR","DID musi mieć dokładnie 4 znaki hex");return}if(!connected||monitoring||autoRunning)return;const ep=ENDPOINTS[ecu]||ENDPOINTS.ECM;$("#readDid").disabled=true;await runCommands(["ATE0","ATL0","ATS1","ATH0","ATCAF1","ATSP6","ATCRA "+ep.response,"ATSH "+ep.request]);const res=await requestVehicle("22"+did,ecu);let verdict;if(res.correlation&&res.correlation.pass&&res.meta.status!=="NEGATIVE_RESPONSE"){const bytes=extractDidData(res.text,did),def=DID_DEFS[ecu+":"+did];if(!bytes)verdict={kind:"INCONCLUSIVE",text:"Skorelowana odpowiedź, ale parser nie wydobył payloadu"};else if(def){const decoded=decodeDefinition(def,bytes);if(decoded&&decoded.value>=def.min&&decoded.value<=def.max){acceptSample(def.signal_id,decoded,res,bytes.map(x=>x.toString(16).padStart(2,"0")).join(" "),def.confidence);verdict={kind:"PASS",text:`${def.name} = ${decoded.display} ${decoded.unit}`,detail:candidateViews(bytes)}}else verdict={kind:"INCONCLUSIVE",text:"Wartość poza zakresem plausibility",detail:candidateViews(bytes)}}else verdict={kind:"INFO",text:`DID ${did} odpowiedział; definicja pozostaje kandydatem`,detail:candidateViews(bytes)}}else if(res.meta&&res.meta.status==="NEGATIVE_RESPONSE")verdict={kind:"INCONCLUSIVE",text:`DID ${did}: 7F 22 ${res.meta.nrc} (${res.meta.nrcName})`,detail:res.text};else verdict={kind:"FAIL",text:`DID ${did}: odpowiedź odrzucona przez korelację (${res.status})`,detail:res.correlation&&res.correlation.reason};renderVerdict(verdict);await runCommands(["ATSH 7E0","ATCRA 7E8"]);refresh()}
+async function readDid(didRaw,ecu){const did=String(didRaw||"").toUpperCase().replace(/[^0-9A-F]/g,"");if(!/^[0-9A-F]{4}$/.test(did)){event("ERROR","DID musi mieć dokładnie 4 znaki hex");return}if(!connected||monitoring||autoRunning)return;const ep=ENDPOINTS[ecu]||ENDPOINTS.ECM;$("#readDid").disabled=true;await runCommands(["ATE0","ATL0","ATS1","ATH0","ATCAF1","ATSP6","ATCRA "+ep.response,"ATSH "+ep.request]);const res=await requestVehicle("22"+did,ecu);let verdict;if(res.correlation&&res.correlation.pass&&res.meta.status!=="NEGATIVE_RESPONSE"){const bytes=extractDidData(res.text,did),def=DID_DEFS[ecu+":"+did];if(!bytes)verdict={kind:"INCONCLUSIVE",text:"Skorelowana odpowiedź, ale parser nie wydobył payloadu"};else if(def&&def.codec==="misfire6_u16be"){const rawCounts=decodeMisfire(bytes);
+    if(rawCounts){applyMisfire(rawCounts,res,bytes.slice(0,MISFIRE_CYL*2).map(x=>x.toString(16).padStart(2,"0")).join(" "));
+      verdict={kind:"PASS",text:"Wypady (licznik ECU): "+rawCounts.map((v,i)=>`C${i+1}=${v}`).join(" · "),detail:"Suma w tej sesji: "+misfireTotals.map((v,i)=>`C${i+1}=${v}`).join(" · ")}}
+    else verdict={kind:"INCONCLUSIVE",text:"DAB6: nieoczekiwana długość payloadu",detail:candidateViews(bytes)}}
+  else if(def){const decoded=decodeDefinition(def,bytes);if(decoded&&decoded.value>=def.min&&decoded.value<=def.max){acceptSample(def.signal_id,decoded,res,bytes.map(x=>x.toString(16).padStart(2,"0")).join(" "),def.confidence);verdict={kind:"PASS",text:`${def.name} = ${decoded.display} ${decoded.unit}`,detail:candidateViews(bytes)}}else verdict={kind:"INCONCLUSIVE",text:"Wartość poza zakresem plausibility",detail:candidateViews(bytes)}}else verdict={kind:"INFO",text:`DID ${did} odpowiedział; definicja pozostaje kandydatem`,detail:candidateViews(bytes)}}else if(res.meta&&res.meta.status==="NEGATIVE_RESPONSE")verdict={kind:"INCONCLUSIVE",text:`DID ${did}: 7F 22 ${res.meta.nrc} (${res.meta.nrcName})`,detail:res.text};else verdict={kind:"FAIL",text:`DID ${did}: odpowiedź odrzucona przez korelację (${res.status})`,detail:res.correlation&&res.correlation.reason};renderVerdict(verdict);await runCommands(["ATSH 7E0","ATCRA 7E8"]);refresh()}
 function renderVerdict(v){const box=document.createElement("div");box.className="v "+v.kind;box.innerHTML='<b></b><div></div><small style="color:var(--dim);font-family:var(--mono)"></small>';box.querySelector("b").textContent=v.kind;box.querySelector("div").textContent=v.text;box.querySelector("small").textContent=v.detail||"";verdictEl.prepend(box)}
 
 function showFuelPrompt(){$("#fuelPrompt").classList.add("show")}
 function setFuel(state){if(!["BENZYNA","LPG"].includes(state))return;fuelState=state;$("#fuel").textContent=state;$("#fuel").className="status on";$$('[data-fuel]').forEach(b=>b.classList.toggle("active",b.dataset.fuel===state));$("#fuelPrompt").classList.remove("show");event("INFO","FUEL_STATE "+state,{event_type:"fuel_transition",fuel_state:state})}
-function newSession(){if(inflight||queue.length||monitoring||autoRunning)return;sessionId=uuid();seq=0;sessionStartedWall=wall();sessionStartedMono=mono();sessionSampleCount=0;sessionExchangeCount=0;fuelState=null;lastSignals.clear();counters={timeouts:0,late:0,orphan:0,mismatch:0,bufferFull:0,rejected:0,salvaged:0};$("#fuel").textContent="WYBIERZ";$("#fuel").className="status warn";$$('[data-fuel]').forEach(b=>b.classList.remove("active"));$("#session").textContent="sesja: "+sessionId.slice(0,8);event("INFO","Nowa sesja "+sessionId,{app_version:APP_VERSION});renderCards();refresh();showFuelPrompt()}
+function newSession(){if(inflight||queue.length||monitoring||autoRunning)return;sessionId=uuid();seq=0;sessionStartedWall=wall();sessionStartedMono=mono();sessionSampleCount=0;sessionExchangeCount=0;fuelState=null;lastSignals.clear();counters={timeouts:0,late:0,orphan:0,mismatch:0,bufferFull:0,rejected:0,salvaged:0};misfirePrev=null;misfireTotals=new Array(MISFIRE_CYL).fill(0);$("#fuel").textContent="WYBIERZ";$("#fuel").className="status warn";$$('[data-fuel]').forEach(b=>b.classList.remove("active"));$("#session").textContent="sesja: "+sessionId.slice(0,8);event("INFO","Nowa sesja "+sessionId,{app_version:APP_VERSION});renderCards();refresh();showFuelPrompt()}
 async function waitForTransportIdle(maxMs=6000){const end=performance.now()+maxMs;while((inflight||queue.length||drain)&&performance.now()<end)await delay(50);return !inflight&&!queue.length&&!drain}
 async function exportSession(){if(autoRunning||exporting){if(autoRunning)event("ERROR","Eksport dostępny po zakończeniu diagnozy startowej");return}exporting=true;refresh();const old=$("#export").textContent;if(monitoring){monitoring=false;$("#export").textContent="Domykam bieżący pomiar…";refresh();if(!await waitForTransportIdle()){event("ERROR","Eksport przerwany: transport nie przeszedł w stan idle");exporting=false;$("#export").textContent=old;refresh();return}}$("#export").textContent="Przygotowuję eksport…";const flushed=await flushWrites();if(!flushed){event("ERROR","Eksport przerwany: oczekujące zapisy IndexedDB");exporting=false;$("#export").textContent=old;refresh();return}const[chunks,exchanges,samples,events]=await Promise.all([dbAll("chunk"),dbAll("exchange"),dbAll("sample"),dbAll("event")]);const manifest={record_type:"capture_manifest",schema:"xc70.capture_manifest.v2",session_id:sessionId,app_version:APP_VERSION,started_wall:sessionStartedWall,ended_wall:wall(),duration_ms:Math.round(mono()-sessionStartedMono),write_flush_complete:true,adapter:{name:device?(device.name||null):null,profile:adapterProfile,service_uuid:serviceUuid},scope:{transport:"BLE ELM",policy:"read-only allowlist",endpoints:ENDPOINTS},parser:{framing:"ELM CAF1 ATH0",correlation:"service+PID/DID",version:APP_VERSION},counters:{...counters},fuel_state_last:fuelState,records:{chunks:chunks.length,exchanges:exchanges.length,samples:samples.length,events:events.length},privacy:{vin_included:false}};const lines=[manifest,...chunks.map(x=>({record_type:"transport_chunk",...x})),...exchanges.map(x=>({record_type:"exchange",...x})),...samples.map(x=>({record_type:"sample",...x})),...events.map(x=>({record_type:"event",...x}))].map(x=>JSON.stringify(x)).join("\n");const url=URL.createObjectURL(new Blob([lines],{type:"application/x-ndjson"})),a=document.createElement("a");a.href=url;a.download=`xc70_${sessionId.slice(0,8)}_${wall().replace(/[:.]/g,"-")}.jsonl`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);$("#export").textContent=`Wyeksportowano ${samples.length} próbek`;setTimeout(()=>{exporting=false;$("#export").textContent=old;refresh()},1800)}
 
