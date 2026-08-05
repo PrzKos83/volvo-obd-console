@@ -206,7 +206,7 @@
 <script>
 "use strict";
 
-const APP_VERSION="0.12.0";
+const APP_VERSION="0.12.1";
 /* Muszą być zadeklarowane przed pierwszym użyciem niżej (const nie jest hoistowany). */
 /* MISFIRE_READS: odczytów pod jednym przełączeniem nagłówka. Zmierzone na realnej serii:
    4 odczyty dają tylko ×1,1 więcej zarejestrowanych wypadów, a wydłużają cykl o ~0,5 s,
@@ -568,7 +568,7 @@ setInterval(()=>{renderCards();updateSessionUi();checkAnomalies()},1000);
 
 /* Wznowienie monitora dokłada dane do sesji, która była już wysłana — od tej chwili
    plik na repozytorium znów jest nieaktualny, więc ostrzeżenie przed zamknięciem wraca. */
-async function monitor(){monitoring=true;sessionPushed=false;refresh();event("INFO","Monitor start: ATH1 + CAF1, składanie ISO-TP po stronie aplikacji, pojedyncze PID-y");/* Nagłówek ustawiamy RAZ na 7E0 (adresowanie fizyczne do ECM) i już nie przełączamy.
+async function monitor(){monitoring=true;sessionPushed=false;holdAutoPush=false;refresh();event("INFO","Monitor start: ATH1 + CAF1, składanie ISO-TP po stronie aplikacji, pojedyncze PID-y");/* Nagłówek ustawiamy RAZ na 7E0 (adresowanie fizyczne do ECM) i już nie przełączamy.
    Zmierzone na aucie 29.07: powrót na 7DF kończył się STOPPED 70/70, bo magistrala nigdy nie
    milknie — inny nadawca (najpewniej sterownik LPG) odpytuje ECM w pętli ~60 ms. Mimo to tryb 01
    adresowany do 7E0 działa: 67/70 zapytań tuż po nieudanym ATSH było poprawnie skorelowanych.
@@ -608,7 +608,8 @@ resetIsoTp();await runCommands(["ATE0","ATL0","ATS1","ATH1","ATAL","ATAT1","ATST
   }
   if(lastRes)emitMisfire(lastRes,lastHex);   /* jedna próbka na cykl, nie na odczyt */
   await delay(REQUEST_GAP_MS);
-}monitoring=false;refresh();event("INFO","Monitor zatrzymany");await touchSession({closed:true});/* Automatyczna wysyłka po pomiarze — sedno punktu „zbieramy i przesyłamy bez ręcznej roboty". */if(repoReady()&&repoCfg().auto!==false){try{await pushSession(!!repoCfg().chunks)}catch(err){setRepoStatus("Wysyłka nieudana: "+String(err&&err.message||err),"err")}}}
+}monitoring=false;refresh();event("INFO","Monitor zatrzymany");await touchSession({closed:true});/* Automatyczna wysyłka po pomiarze — sedno punktu „zbieramy i przesyłamy bez ręcznej roboty".
+   Pominięta, gdy monitor zatrzymała czynność laboratoryjna: sesja trwa dalej. */if(repoReady()&&repoCfg().auto!==false&&!holdAutoPush){try{await pushSession(!!repoCfg().chunks)}catch(err){setRepoStatus("Wysyłka nieudana: "+String(err&&err.message||err),"err")}}}
 
 function f32be(bytes){const a=new Uint8Array(bytes),dv=new DataView(a.buffer,a.byteOffset,a.byteLength);return dv.getFloat32(0,false)}
 function extractDidData(text,did){const tokens=responseTokens(text);for(let i=0;i+2<tokens.length;i++)if(tokens[i]==="62"&&(tokens[i+1]+tokens[i+2])===did)return tokens.slice(i+3).map(x=>parseInt(x,16));return null}
@@ -692,7 +693,8 @@ function freezePayload(bytes,i,pid){
   return null;                                              /* za krótka — lepiej nic niż śmieci */
 }
 async function readFreezeFrame(){
-  if(!connected||monitoring||autoRunning||listening||inflight||queue.length)return;
+  const zajete=await freeBus();
+  if(zajete){$("#freezeResult").innerHTML='<div class="v FAIL">'+zajete+'</div>';return}
   $("#freezeResult").innerHTML='<div class="v INFO">Odczytuję ramkę zamrożoną…</div>';
   const out=[];let dtc=null,any=false;
   for(const pid of FREEZE_PIDS){
@@ -1321,6 +1323,28 @@ async function scanModules(){
   refresh();
 }
 
+/* ═══════════ ZWOLNIENIE MAGISTRALI POD CZYNNOŚĆ LABORATORYJNĄ ═══════════
+   Monitor startuje sam po połączeniu, więc każda czynność wymagająca wolnej magistrali
+   odbijała się od warunku „zatrzymaj monitor" — a większość robiła to PO CICHU, bez słowa
+   na ekranie. Dlatego ramka zamrożona nie została odczytana ani razu w żadnej sesji.
+   Teraz monitor zatrzymujemy za użytkownika, a sesji przy tym nie wysyłamy na repo
+   (wysyłka i tak nastąpi przy właściwym zatrzymaniu pomiaru). */
+let holdAutoPush=false;
+async function freeBus(){
+  if(!connected)return "Najpierw połącz się z autem.";
+  if(autoRunning)return "Trwa diagnostyka startowa, poczekaj chwilę.";
+  if(listening)return "Trwa nasłuch magistrali — zatrzymaj go najpierw.";
+  if(monitoring){
+    /* holdAutoPush zdejmuje dopiero start monitora — ogon pętli monitora jest asynchroniczny
+       i mógłby wystartować wysyłkę już po powrocie z tej funkcji. */
+    holdAutoPush=true;monitoring=false;refresh();
+    if(!await waitForTransportIdle())return "Monitor nie zwolnił magistrali — spróbuj jeszcze raz.";
+    return null;
+  }
+  if(inflight||queue.length||drain||settle)return "Transport zajęty, spróbuj za moment.";
+  return null;
+}
+
 /* ═══════════ TEST CIŚNIENIA PALIWA ═══════════
    Monitor odpytuje PID 0A raz na kilkanaście sekund — za rzadko, żeby zobaczyć nabicie szyny
    (trwa ~2 s) i tempo jej opadania. Tu odpytujemy wyłącznie ten jeden PID, w pętli. */
@@ -1340,8 +1364,8 @@ function pressVerdict(pts){
 }
 async function pressureTest(){
   if(pressRunning){pressRunning=false;return}
-  if(!connected||monitoring||autoRunning||listening||inflight||queue.length){
-    $("#pressResult").innerHTML='<div class="v FAIL">Potrzebna wolna magistrala: połącz się i zatrzymaj monitor.</div>';return}
+  const zajete=await freeBus();
+  if(zajete){$("#pressResult").innerHTML='<div class="v FAIL">'+zajete+'</div>';return}
   pressRunning=true;$("#pressTest").textContent="Zatrzymaj test";refresh();
   $("#pressResult").innerHTML='<div class="v INFO">Mierzę… zapłon włączony, silnika nie odpalaj.</div>';
   const pts=[], t0=mono();
@@ -1395,8 +1419,8 @@ function decodeMonitorRecords(bytes){
   return out;
 }
 async function readMonitors(){
-  if(!connected||monitoring||autoRunning||listening||inflight||queue.length){
-    $("#monResult").innerHTML='<div class="v FAIL">Potrzebna wolna magistrala: połącz się i zatrzymaj monitor.</div>';return}
+  const zajete=await freeBus();
+  if(zajete){$("#monResult").innerHTML='<div class="v FAIL">'+zajete+'</div>';return}
   $("#monResult").innerHTML='<div class="v INFO">Odczytuję monitory…</div>';
   const rows=[];let odmowa=null;
   for(const mid of ["00","01","02","03","04","05","06","07"]){
@@ -1434,7 +1458,8 @@ const FUEL_TYPE={1:"benzyna",2:"metanol",3:"etanol",4:"diesel",5:"LPG",6:"CNG",7
   11:"dwupaliwowy — pracuje na benzynie",12:"dwupaliwowy — metanol",13:"dwupaliwowy — etanol",
   14:"dwupaliwowy — PRACUJE NA LPG",15:"dwupaliwowy — CNG",16:"dwupaliwowy — propan",17:"dwupaliwowy — elektryczny"};
 async function readFuelType(){
-  if(!connected||monitoring||autoRunning||listening||inflight||queue.length)return;
+  const zajete=await freeBus();
+  if(zajete){$("#listenResult").innerHTML='<div class="v FAIL">'+zajete+'</div>';return}
   const res=await requestVehicle("0151","ECM",POLL_TIMEOUT);
   const m=parsePidMap(res.text);
   const b=m["51"]?m["51"][0]:null;
@@ -1444,7 +1469,7 @@ async function readFuelType(){
   if(b!=null)event("INFO","RODZAJ_PALIWA",{kod:b,opis:FUEL_TYPE[b]||"nieznany"});
 }
 
-async function readDid(didRaw,ecu){const did=String(didRaw||"").toUpperCase().replace(/[^0-9A-F]/g,"");if(!/^[0-9A-F]{4}$/.test(did)){event("ERROR","DID musi mieć dokładnie 4 znaki hex");return}if(!connected||monitoring||autoRunning)return;const ep=ENDPOINTS[ecu]||ENDPOINTS.ECM;$("#readDid").disabled=true;resetIsoTp();await runCommands(endpointCommands(ep.request,ep.response));const res=await requestVehicle("22"+did,ecu,DID_POLL_TIMEOUT);let verdict;if(res.correlation&&res.correlation.pass&&res.meta.status!=="NEGATIVE_RESPONSE"){const bytes=extractDidData(res.text,did),def=DID_DEFS[ecu+":"+did];if(!bytes)verdict={kind:"INCONCLUSIVE",text:"Skorelowana odpowiedź, ale parser nie wydobył payloadu"};else if(def&&def.codec==="misfire6_u16be"){const rawCounts=decodeMisfire(bytes);
+async function readDid(didRaw,ecu){const did=String(didRaw||"").toUpperCase().replace(/[^0-9A-F]/g,"");if(!/^[0-9A-F]{4}$/.test(did)){event("ERROR","DID musi mieć dokładnie 4 znaki hex");return}const zajete=await freeBus();if(zajete){renderVerdict({kind:"FAIL",text:zajete});return}const ep=ENDPOINTS[ecu]||ENDPOINTS.ECM;$("#readDid").disabled=true;resetIsoTp();await runCommands(endpointCommands(ep.request,ep.response));const res=await requestVehicle("22"+did,ecu,DID_POLL_TIMEOUT);let verdict;if(res.correlation&&res.correlation.pass&&res.meta.status!=="NEGATIVE_RESPONSE"){const bytes=extractDidData(res.text,did),def=DID_DEFS[ecu+":"+did];if(!bytes)verdict={kind:"INCONCLUSIVE",text:"Skorelowana odpowiedź, ale parser nie wydobył payloadu"};else if(def&&def.codec==="misfire6_u16be"){const rawCounts=decodeMisfire(bytes);
     if(rawCounts){applyMisfire(rawCounts,res,bytes.slice(0,MISFIRE_CYL*2).map(x=>x.toString(16).padStart(2,"0")).join(" "));
       verdict={kind:"PASS",text:"Wypady (licznik ECU): "+rawCounts.map((v,i)=>`C${i+1}=${v}`).join(" · "),detail:"Suma w tej sesji: "+misfireTotals.map((v,i)=>`C${i+1}=${v}`).join(" · ")}}
     else verdict={kind:"INCONCLUSIVE",text:"DAB6: nieoczekiwana długość payloadu",detail:candidateViews(bytes)}}
