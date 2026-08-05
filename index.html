@@ -105,6 +105,18 @@
       <div id="listenResult"></div>
     </div>
     <div class="sheet">
+      <h3>Test ciśnienia paliwa</h3>
+      <p><b>Zapłon włączony, silnika NIE odpalać.</b> Pompa nabija szynę przez ~2 s po przekręceniu kluczyka. Sprawny układ utrzymuje to ciśnienie; szybki spadek oznacza nieszczelny wtryskiwacz albo zawór zwrotny przy pompie. Test odpytuje wyłącznie PID 0A, najgęściej jak magistrala pozwala.</p>
+      <div class="bar"><button id="pressTest" class="live">Start testu</button><span id="pressNow" style="font:12px var(--mono);color:var(--dim)"></span></div>
+      <div id="pressResult"></div>
+    </div>
+    <div class="sheet">
+      <h3>Monitory pokładowe (tryb 06)</h3>
+      <p>Znormalizowane wyniki testów sterownika wraz z <b>progami zaliczenia</b> — w tym liczniki wypadania zapłonów osobno dla każdego cylindra. Niezależne źródło wobec naszego DID DAB6 i czytelne dla każdego warsztatu.</p>
+      <div class="bar"><button id="readMon" class="live">Odczytaj monitory</button></div>
+      <div id="monResult"></div>
+    </div>
+    <div class="sheet">
       <h3>Ramka zamrożona</h3>
       <p>Zdjęcie warunków z chwili, gdy sterownik zapisał kod: obroty, obciążenie, temperatura, korekty. <b>Kasowanie kodu usuwa te dane bezpowrotnie</b> — odczytaj je zanim skasujesz.</p>
       <div class="bar"><button id="readFreeze" class="live">Odczytaj ramkę</button></div>
@@ -194,7 +206,7 @@
 <script>
 "use strict";
 
-const APP_VERSION="0.11.0";
+const APP_VERSION="0.12.0";
 /* Muszą być zadeklarowane przed pierwszym użyciem niżej (const nie jest hoistowany). */
 /* MISFIRE_READS: odczytów pod jednym przełączeniem nagłówka. Zmierzone na realnej serii:
    4 odczyty dają tylko ×1,1 więcej zarejestrowanych wypadów, a wydłużają cykl o ~0,5 s,
@@ -264,6 +276,8 @@ const atAllowed=[/^ATZ$/,/^ATI$/,/^AT@1$/,/^ATE[01]$/,/^ATL[01]$/,/^ATS[01]$/,/^
   /* 0900 to mapa obsługiwanych pozycji trybu 09 — czysty odczyt, a pozwala odróżnić
      „sterownik nie zna VIN-u" od „sterownik w ogóle nie odpowiada". */
   if(["03","06","07","0900","0902","0904","0906","0908","090A","090B","3E","3E00"].includes(compact)) return {allowed:true,cmd:compact,kind:"OBD"};
+  /* Tryb 06 wymaga numeru monitora: samo „06" sterownik odrzuca (7F 06 12 — zmierzone). */
+  if(/^06[0-9A-F]{2}$/.test(compact)) return {allowed:true,cmd:compact,kind:"OBD"};
   if(/^01(?:[0-9A-F]{2})+$/.test(compact)){
     const pids=compact.slice(2).match(/../g)||[];
     return {allowed:pids.length>0&&pids.every(p=>MONITOR_PIDS.has(p)||["00","20","40","60"].includes(p)),cmd:compact,kind:"OBD"};
@@ -315,7 +329,7 @@ function refresh(){
   const busy=autoRunning||monitoring||listening||!!inflight||queue.length>0||!!drain||!!settle;
   $("#main").textContent=connected?"Zakończ i rozłącz":"Połącz z autem";
   $("#readDid").disabled=!connected||busy;
-  for(const id of ["#listen","#scanModules","#readFuelType","#readFreeze","#discRun","#repoVin"]){const el=$(id);if(el)el.disabled=!connected||busy}$("#newSession").disabled=busy;
+  for(const id of ["#listen","#scanModules","#readFuelType","#readFreeze","#discRun","#repoVin","#readMon"]){const el=$(id);if(el)el.disabled=!connected||busy}$("#newSession").disabled=busy;
   $("#monitorToggle").disabled=!connected||(!monitoring&&(autoRunning||!!inflight||queue.length>0||!!drain||!!settle));
   $("#monitorToggle").textContent=monitoring?"Pauza":"Monitor";
   $("#export").disabled=autoRunning||exporting;
@@ -344,7 +358,7 @@ function responseComplete(text,exp){
   const need=declaredLength(text);
   return need==null?true:dataByteCount(text)>=need;
 }
-function expectation(cmd){const c=cmd.replace(/\s/g,"");if(c.startsWith("AT"))return{kind:"AT"};if(c==="03")return{kind:"OBD",positive:["43"]};if(c==="06")return{kind:"OBD",positive:["46"]};if(c==="07")return{kind:"OBD",positive:["47"]};if(c.startsWith("09"))return{kind:"OBD",positive:["49"+c.slice(2,4)]};if(c.startsWith("01"))return{kind:"OBD",positive:(c.slice(2).match(/../g)||[]).map(p=>"41"+p)};if(c.startsWith("22"))return{kind:"UDS",positive:["62"+c.slice(2,6)],negativeService:"22"};return{kind:"UNKNOWN",positive:[]}}
+function expectation(cmd){const c=cmd.replace(/\s/g,"");if(c.startsWith("AT"))return{kind:"AT"};if(c==="03")return{kind:"OBD",positive:["43"]};if(c.startsWith("06"))return{kind:"OBD",positive:["46"],negativeService:"06"};if(c==="07")return{kind:"OBD",positive:["47"]};if(c.startsWith("09"))return{kind:"OBD",positive:["49"+c.slice(2,4)]};if(c.startsWith("01"))return{kind:"OBD",positive:(c.slice(2).match(/../g)||[]).map(p=>"41"+p)};if(c.startsWith("22"))return{kind:"UDS",positive:["62"+c.slice(2,6)],negativeService:"22"};return{kind:"UNKNOWN",positive:[]}}
 function correlate(cmd,text,meta){const exp=expectation(cmd);if(exp.kind==="AT")return{pass:["RESPONSE","AT_UNSUPPORTED"].includes(meta.status),reason:"adapter_command"};const h=cleanHex(text);if(meta.status==="NEGATIVE_RESPONSE")return{pass:meta.service===exp.negativeService||exp.kind==="OBD",reason:"negative_response",nrc:meta.nrc};const hits=(exp.positive||[]).filter(x=>h.includes(x));return{pass:hits.length>0,reason:hits.length?"positive_signature":"signature_missing",expected:exp.positive,observed:h.slice(0,160)}}
 
 function enqueue(raw,timeoutMs=DEFAULT_TIMEOUT,options={}){return new Promise(resolve=>{const policy=commandPolicy(raw);if(!policy.allowed){counters.rejected++;event("ERROR","COMMAND_REJECTED: "+policy.cmd,{reason:"read_only_allowlist"});resolve({cmd:policy.cmd,status:"COMMAND_REJECTED",text:"",correlation:{pass:false,reason:"policy"}});return}if(!writeChar){resolve({cmd:policy.cmd,status:"DISCONNECTED",text:""});return}queue.push({cmd:policy.cmd,kind:policy.kind,timeoutMs,resolve,endpoint:options.endpoint||null,attempt:options.attempt||1});pump();refresh()})}
@@ -528,7 +542,7 @@ const MONITOR_SINGLE=["0C","04","05","0B","06","07","34","15"];
 const MONITOR_SLOW=["0A","0D","0E","0F","10","11","2F","31","33","3C","42","43","44","46","1F","55","56"];
 const SLOW_EVERY=10;
 const PID_SIGNALS={"0C":"powertrain.engine.speed.obd","04":"powertrain.engine.load","05":"powertrain.coolant.temperature","06":"powertrain.fuel.trim.short","07":"powertrain.fuel.trim.long","0B":"powertrain.intake.map","0A":"powertrain.fuel.rail_pressure.obd","34":"powertrain.lambda.b1s1","15":"powertrain.lambda.b1s2.voltage","44":"powertrain.lambda.commanded","3C":"powertrain.catalyst.temperature","2F":"vehicle.fuel.level","31":"vehicle.distance.since_clear","0D":"vehicle.speed","0E":"powertrain.ignition.advance","0F":"powertrain.intake.air.temperature","10":"powertrain.maf","11":"powertrain.throttle","33":"ambient.barometric","42":"electrical.module.voltage","43":"powertrain.engine.load.absolute","46":"ambient.temperature","1F":"powertrain.runtime","55":"powertrain.fuel.trim.short.s2","56":"powertrain.fuel.trim.long.s2"};
-function acceptSample(signalId,decoded,source,raw,confidence="standard_obd"){const now=mono(),sample={session:sessionId,seq:++seq,sample_id:uuid(),signal_id:signalId,source_exchange_id:source.exchangeId,endpoint_id:source.endpoint||"ECM",request_payload:source.cmd,response_payload_raw:raw,value:decoded.value,unit:decoded.unit,observed_at_monotonic_ms:now,observed_at_wallclock:wall(),quality_status:"valid",acquisition_mode:"active_poll",decoder_id:signalId,decoder_version:APP_VERSION,definition_pack_hash:"builtin-v0.7.3",definition_confidence:confidence,reject_reason:null,fuel_state:fuelState};sessionSampleCount++;dbPut("sample",sample);if(signalId==="powertrain.fuel.trim.short"&&monitoring)fuelWatchFeed(decoded.value,now);lastSignals.set(signalId,{...sample,display:decoded.display});view("sample",`${signalId}=${decoded.display} ${decoded.unit}`)}
+function acceptSample(signalId,decoded,source,raw,confidence="standard_obd"){const now=mono(),sample={session:sessionId,seq:++seq,sample_id:uuid(),signal_id:signalId,source_exchange_id:source.exchangeId,endpoint_id:source.endpoint||"ECM",request_payload:source.cmd,response_payload_raw:raw,value:decoded.value,unit:decoded.unit,observed_at_monotonic_ms:now,observed_at_wallclock:wall(),quality_status:"valid",acquisition_mode:"active_poll",decoder_id:signalId,decoder_version:APP_VERSION,definition_pack_hash:"builtin-v0.7.3",definition_confidence:confidence,reject_reason:null,fuel_state:fuelState};sessionSampleCount++;dbPut("sample",sample);if(signalId==="powertrain.fuel.trim.short"&&monitoring)fuelWatchFeed(decoded.value,now);lastSignals.set(signalId,{...sample,display:decoded.display});if(signalId==="vehicle.distance.since_clear")noteOdoReading();view("sample",`${signalId}=${decoded.display} ${decoded.unit}`)}
 function renderCards(){
   const labels={"powertrain.engine.speed.obd":"Obroty silnika","powertrain.engine.load":"Obciążenie","powertrain.coolant.temperature":"Płyn chłodzący","powertrain.fuel.trim.short":"Korekta STFT","powertrain.fuel.trim.long":"Korekta LTFT","powertrain.intake.map":"Ciśnienie MAP","powertrain.fuel.rail_pressure.obd":"Ciśnienie paliwa","powertrain.lambda.b1s1":"Lambda B1S1","powertrain.engine.speed.enhanced":"Obroty · DID","powertrain.fuel.rail_pressure.enhanced":"Rail · DID","powertrain.misfire.cyl1":"Wypady CYL 1","powertrain.misfire.cyl2":"Wypady CYL 2","powertrain.misfire.cyl3":"Wypady CYL 3","powertrain.misfire.cyl4":"Wypady CYL 4","powertrain.misfire.cyl5":"Wypady CYL 5","powertrain.misfire.cyl6":"Wypady CYL 6","powertrain.lambda.b1s2.voltage":"Sonda za kat.","powertrain.lambda.commanded":"Lambda zadana","powertrain.catalyst.temperature":"Temp. katalizatora","vehicle.fuel.level":"Poziom paliwa","vehicle.distance.since_clear":"Dystans od kasowania","vehicle.speed":"Prędkość","powertrain.ignition.advance":"Wyprzedzenie zapłonu","powertrain.intake.air.temperature":"Temp. dolotu","powertrain.maf":"Przepływ powietrza","powertrain.throttle":"Przepustnica","ambient.barometric":"Ciśn. atmosferyczne","electrical.module.voltage":"Napięcie sterownika","powertrain.engine.load.absolute":"Obciążenie abs.","ambient.temperature":"Temp. otoczenia","powertrain.runtime":"Czas pracy","powertrain.fuel.trim.short.s2":"STFT sonda 2","powertrain.fuel.trim.long.s2":"LTFT sonda 2"};
   const priority=["powertrain.misfire.cyl1","powertrain.misfire.cyl2","powertrain.misfire.cyl3","powertrain.misfire.cyl4","powertrain.misfire.cyl5","powertrain.misfire.cyl6","powertrain.engine.speed.obd","powertrain.engine.speed.enhanced","powertrain.lambda.b1s1","powertrain.fuel.rail_pressure.enhanced","powertrain.fuel.rail_pressure.obd","powertrain.engine.load","powertrain.intake.map","powertrain.coolant.temperature","powertrain.fuel.trim.short","powertrain.fuel.trim.long"];
@@ -663,19 +677,35 @@ function decodeDtcWord(hi,lo){
   const L=["P","C","B","U"][(hi>>6)&3];
   return L+((hi>>4)&3)+((hi&0x0F).toString(16)+lo.toString(16).padStart(2,"0")).toUpperCase();
 }
+/* Odpowiedź trybu 02 to 42 <PID> <nr ramki> <dane>, ale nie każdy sterownik odsyła numer
+   ramki. Zgadywanie „przeskocz trzy bajty" po cichu przesuwało dane o jeden i dawało
+   prawdopodobnie wyglądające, a błędne wartości. Rozstrzygamy po ZNANEJ długości PID-u:
+   jeśli po identyfikatorze zostało dokładnie tyle bajtów, ile ma dana wielkość — numeru
+   ramki nie ma; jeśli o jeden więcej — jest i trzeba go pominąć. */
+const FREEZE_LEN={...PID_LEN,"02":2};
+function freezePayload(bytes,i,pid){
+  const rest=bytes.slice(i+2);
+  const need=FREEZE_LEN[pid];
+  if(need==null)return rest.length>1?rest.slice(1):rest;   /* nieznana długość: zakładamy numer ramki */
+  if(rest.length===need)return rest;                        /* bez numeru ramki */
+  if(rest.length>=need+1)return rest.slice(1,1+need);       /* z numerem ramki */
+  return null;                                              /* za krótka — lepiej nic niż śmieci */
+}
 async function readFreezeFrame(){
   if(!connected||monitoring||autoRunning||listening||inflight||queue.length)return;
   $("#freezeResult").innerHTML='<div class="v INFO">Odczytuję ramkę zamrożoną…</div>';
   const out=[];let dtc=null,any=false;
   for(const pid of FREEZE_PIDS){
     if(!connected)break;
-    const res=await requestVehicle("02"+pid,"ECM",POLL_TIMEOUT);
+    /* Norma wymaga numeru ramki w zapytaniu: 02 <PID> <nr>. Bez niego część sterowników
+       odpowiada w skróconej formie i wyrównanie danych się rozjeżdża. */
+    const res=await requestVehicle("02"+pid+"00","ECM",POLL_TIMEOUT);
     if(!(res.correlation&&res.correlation.pass)){await delay(REQUEST_GAP_MS);continue}
     const t=(res.text||"").toUpperCase().split(/\s+/).filter(x=>/^[0-9A-F]{2}$/.test(x)).map(x=>parseInt(x,16));
     const i=t.findIndex((x,k)=>x===0x42&&t[k+1]===parseInt(pid,16));
     if(i<0){await delay(REQUEST_GAP_MS);continue}
-    const data=t.slice(i+3);          /* 42, PID, numer ramki, potem dane */
-    if(!data.length){await delay(REQUEST_GAP_MS);continue}
+    const data=freezePayload(t,i,pid);
+    if(!data||!data.length){await delay(REQUEST_GAP_MS);continue}
     any=true;
     if(pid==="02"){
       dtc=(data[0]===0&&data[1]===0)?null:decodeDtcWord(data[0],data[1]);
@@ -989,13 +1019,37 @@ async function recoverOnStart(){
 const ODO_KEY="xc70_odo_anchor";
 let vehicleVin=null;
 function odoAnchor(){try{return JSON.parse(localStorage.getItem(ODO_KEY)||"null")}catch(_){return null}}
-function setOdoAnchor(odoKm,pid31){localStorage.setItem(ODO_KEY,JSON.stringify({odoKm,pid31,ts:wall()}))}
+function setOdoAnchor(odoKm,pid31){localStorage.setItem(ODO_KEY,JSON.stringify({odoKm,pid31,seenMax:pid31,ts:wall()}))}
 function lastPid31(){const s=lastSignals.get("vehicle.distance.since_clear");return s?s.value:null}
+/* Porównanie z samym zakotwiczeniem nie wystarczało. Gdy ktoś skasował kody DRUGI raz,
+   a auto zdążyło przejechać więcej niż wynosiło zakotwiczenie, PID 31 spadał, ale wciąż
+   był od niego wyższy — kontrola milczała, a przebieg cofał się w książce serwisowej.
+   Zapamiętujemy więc NAJWYŻSZĄ dotąd widzianą wartość i porównujemy z nią. */
+function noteOdoReading(){
+  const a=odoAnchor(), d=lastPid31();
+  if(!a||d==null)return;
+  const seen=a.seenMax!=null?a.seenMax:a.pid31;
+  if(d>seen){a.seenMax=d;a.bestKm=Math.round(a.odoKm+(d-a.pid31));try{localStorage.setItem(ODO_KEY,JSON.stringify(a))}catch(_){}}
+}
+/* Ile kilometrów PID 31 może spaść, zanim uznamy to za skasowanie kodów. Sam licznik
+   jest całkowity i nie maleje, więc 1 km zapasu wystarcza na zaokrąglenia. */
+const ODO_DROP_TOL=1;
+function odoReset(){
+  const a=odoAnchor(), d=lastPid31();
+  if(!a||d==null)return null;
+  const seen=a.seenMax!=null?a.seenMax:a.pid31;
+  if(d>=seen-ODO_DROP_TOL)return null;
+  /* Znamy przebieg z ostatniego dobrego odczytu i ile auto przejechało od skasowania.
+     Nie wiemy tylko, ile przejechało MIĘDZY tymi zdarzeniami — stąd „co najmniej". */
+  const best=a.bestKm!=null?a.bestKm:Math.round(a.odoKm+(seen-a.pid31));
+  return {seen,now:d,atLeast:best+d};
+}
 function currentOdometer(){
   const a=odoAnchor(), d=lastPid31();
   if(!a)return null;
   if(d==null)return a.odoKm;
   if(d<a.pid31)return null;             /* licznik zerowany — zakotwiczenie nieważne */
+  if(odoReset())return null;            /* kody skasowane ponownie — wskazanie byłoby zaniżone */
   return Math.round(a.odoKm+(d-a.pid31));
 }
 function odometerNote(){
@@ -1003,6 +1057,9 @@ function odometerNote(){
   if(!a)return "brak zakotwiczenia — wpisz wskazanie licznika";
   if(d==null)return "zakotwiczone na "+a.odoKm+" km; czekam na odczyt PID 31";
   if(d<a.pid31)return "PID 31 spadł ("+d+" < "+a.pid31+") — kody zostały skasowane, potrzebne nowe zakotwiczenie";
+  const rst=odoReset();
+  if(rst)return "PID 31 spadł ze "+rst.seen+" na "+rst.now+" km — ktoś skasował kody. Przebieg to co najmniej "+
+    rst.atLeast.toLocaleString("pl-PL")+" km; zakotwicz ponownie wskazaniem z deski";
   return "z zakotwiczenia "+a.odoKm+" km + "+Math.round(d-a.pid31)+" km od tego czasu";
 }
 /* VIN nie zawiera liter I, O ani Q — właśnie po to, żeby nie mylić ich z 1 i 0.
@@ -1142,7 +1199,7 @@ function messageMatches(cmd,data){
   if(c.startsWith("09"))return svc===0x49;
   if(c==="03")return svc===0x43;
   if(c==="07")return svc===0x47;
-  if(c==="06")return svc===0x46;
+  if(c.startsWith("06"))return svc===0x46;
   if(c.startsWith("3E"))return svc===0x7E;
   return false;
 }
@@ -1264,6 +1321,113 @@ async function scanModules(){
   refresh();
 }
 
+/* ═══════════ TEST CIŚNIENIA PALIWA ═══════════
+   Monitor odpytuje PID 0A raz na kilkanaście sekund — za rzadko, żeby zobaczyć nabicie szyny
+   (trwa ~2 s) i tempo jej opadania. Tu odpytujemy wyłącznie ten jeden PID, w pętli. */
+const PRESS_MAX_MS=150000, PRESS_GAP_MS=30;
+let pressRunning=false;
+function pressVerdict(pts){
+  if(!pts.length)return{kind:"FAIL",text:"Ani jednego odczytu ciśnienia."};
+  const v=pts.map(p=>p.v), max=Math.max(...v), last=v[v.length-1], first=v[0];
+  const sec=((pts[pts.length-1].t-pts[0].t)/1000).toFixed(0);
+  const opis=" ("+pts.length+" odczytów w "+sec+" s; szczyt "+max+" kPa, na końcu "+last+" kPa)";
+  if(max<50)return{kind:"INCONCLUSIVE",text:"Ciśnienie nie podniosło się"+opis+
+    ". Albo pompa nie nabiła szyny w tym oknie, albo sterownik nie liczy tego PID-u przy zgaszonym silniku. Uruchom test od razu po przekręceniu kluczyka."};
+  if(last>=0.8*max)return{kind:"PASS",text:"Ciśnienie się trzyma"+opis+". Układ nie wykazuje nieszczelności."};
+  if(last<=0.5*max)return{kind:"FAIL",text:"Ciśnienie wyraźnie spada"+opis+
+    ". To wskazuje na nieszczelny wtryskiwacz albo zawór zwrotny przy module pompy."};
+  return{kind:"INCONCLUSIVE",text:"Ciśnienie powoli opada"+opis+". Powtórz test dłużej, żeby rozstrzygnąć."};
+}
+async function pressureTest(){
+  if(pressRunning){pressRunning=false;return}
+  if(!connected||monitoring||autoRunning||listening||inflight||queue.length){
+    $("#pressResult").innerHTML='<div class="v FAIL">Potrzebna wolna magistrala: połącz się i zatrzymaj monitor.</div>';return}
+  pressRunning=true;$("#pressTest").textContent="Zatrzymaj test";refresh();
+  $("#pressResult").innerHTML='<div class="v INFO">Mierzę… zapłon włączony, silnika nie odpalaj.</div>';
+  const pts=[], t0=mono();
+  while(pressRunning&&connected&&mono()-t0<PRESS_MAX_MS){
+    const res=await requestVehicle("010A",null,POLL_TIMEOUT);
+    if(res.correlation&&res.correlation.pass){
+      const m=parsePidMap(res.text), b=m["0A"];
+      if(b){
+        const d=decodePid("0A",b);
+        if(d){pts.push({t:mono(),v:d.value});
+          acceptSample("powertrain.fuel.rail_pressure.obd",d,res,b.map(x=>x.toString(16).padStart(2,"0")).join(" "));
+          $("#pressNow").textContent=d.display+" kPa · szczyt "+Math.max(...pts.map(p=>p.v))+" · "+pts.length+" odczytów";}
+      }
+    }
+    await delay(PRESS_GAP_MS);
+  }
+  pressRunning=false;$("#pressTest").textContent="Start testu";
+  const v=pressVerdict(pts);
+  const seria=pts.filter((_,k)=>k%Math.max(1,Math.ceil(pts.length/24))===0)
+    .map(p=>((p.t-pts[0].t)/1000).toFixed(0)+"s "+p.v).join("  ·  ");
+  $("#pressResult").innerHTML='<div class="v '+v.kind+'">'+v.text+'</div>'+
+    (pts.length?'<div style="font:11px var(--mono);color:var(--dim);margin-top:6px;overflow-x:auto">'+seria+'</div>':"");
+  event("INFO","TEST_CISNIENIA",{odczytow:pts.length,szczyt:pts.length?Math.max(...pts.map(p=>p.v)):null,
+    koniec:pts.length?pts[pts.length-1].v:null,werdykt:v.kind});
+  refresh();
+}
+
+/* ═══════════ MONITORY POKŁADOWE (TRYB 06) ═══════════
+   Format rekordu: <MID> <TID> <UAS> <wartość hi> <lo> <min hi> <lo> <max hi> <lo> — 9 bajtów,
+   w jednej odpowiedzi może być ich kilka. Wartość liczy się według identyfikatora skalowania
+   (UAS); dla liczników wypadania to zwykłe sztuki. Nieznanego UAS nie udajemy, że rozumiemy. */
+const MID_MISFIRE={"01":"Wypady — dane ogólne","02":"Wypady CYL 1","03":"Wypady CYL 2","04":"Wypady CYL 3",
+  "05":"Wypady CYL 4","06":"Wypady CYL 5","07":"Wypady CYL 6","08":"Wypady CYL 7","09":"Wypady CYL 8",
+  "0A":"Wypady CYL 9","0B":"Wypady CYL 10"};
+const UAS={0x01:{k:1,u:""},0x02:{k:0.1,u:""},0x03:{k:0.01,u:""},0x04:{k:0.001,u:""},
+  0x0A:{k:0.25,u:"V"},0x12:{k:0.001,u:"V"},0x18:{k:0.001,u:"s"},0x19:{k:0.01,u:"s"},
+  0x24:{k:1,u:"szt."},0x25:{k:1,u:"km"},0x27:{k:0.01,u:"%"},0x2F:{k:0.1,u:"%"},0x30:{k:1,u:"licz."}};
+function decodeMonitorRecords(bytes){
+  const out=[];
+  let i=bytes.indexOf(0x46);
+  if(i<0)return out;
+  i++;
+  while(i+8<bytes.length){
+    const mid=bytes[i],tid=bytes[i+1],uas=bytes[i+2];
+    const raw=(bytes[i+3]<<8)|bytes[i+4], lo=(bytes[i+5]<<8)|bytes[i+6], hi=(bytes[i+7]<<8)|bytes[i+8];
+    const s=UAS[uas];
+    out.push({mid:mid.toString(16).toUpperCase().padStart(2,"0"),tid,uas,
+      value:s?raw*s.k:raw, min:s?lo*s.k:lo, max:s?hi*s.k:hi, unit:s?s.u:"surowo", known:!!s});
+    i+=9;
+  }
+  return out;
+}
+async function readMonitors(){
+  if(!connected||monitoring||autoRunning||listening||inflight||queue.length){
+    $("#monResult").innerHTML='<div class="v FAIL">Potrzebna wolna magistrala: połącz się i zatrzymaj monitor.</div>';return}
+  $("#monResult").innerHTML='<div class="v INFO">Odczytuję monitory…</div>';
+  const rows=[];let odmowa=null;
+  for(const mid of ["00","01","02","03","04","05","06","07"]){
+    if(!connected)break;
+    const res=await requestVehicle("06"+mid,"ECM",POLL_TIMEOUT);
+    if(res.meta&&res.meta.status==="NEGATIVE_RESPONSE"){odmowa=odmowa||("7F 06 "+(res.meta.nrc||"?"));await delay(REQUEST_GAP_MS);continue}
+    if(!(res.correlation&&res.correlation.pass)){await delay(REQUEST_GAP_MS);continue}
+    const bytes=(res.text||"").toUpperCase().split(/\s+/).filter(x=>/^[0-9A-F]{2}$/.test(x)).map(x=>parseInt(x,16));
+    for(const r of decodeMonitorRecords(bytes))rows.push({...r,name:MID_MISFIRE[r.mid]||("Monitor "+r.mid)});
+    await delay(REQUEST_GAP_MS);
+  }
+  if(!rows.length){
+    $("#monResult").innerHTML='<div class="v INCONCLUSIVE">Sterownik nie zwrócił monitorów'+
+      (odmowa?" (odmowa "+odmowa+")":"")+'.</div>';
+    event("INFO","MONITORY_06",{rekordow:0,odmowa});return;
+  }
+  const wiersz=r=>{
+    const poza=r.known&&(r.value>r.max||r.value<r.min);
+    return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--line)">'+
+      '<span style="color:var(--dim)">'+r.name+' <span style="opacity:.6">·T'+r.tid.toString(16).toUpperCase()+'</span></span>'+
+      '<b'+(poza?' style="color:var(--bad,#e66)"':'')+'>'+r.value+' '+r.unit+'</b>'+
+      '<span style="color:var(--dim);font-size:10px">próg '+r.min+'–'+r.max+'</span></div>';
+  };
+  $("#monResult").innerHTML='<div class="v PASS">'+rows.length+' wyników testów sterownika:</div>'+
+    '<div style="font:11px var(--mono)">'+rows.map(wiersz).join("")+'</div>'+
+    '<p style="font-size:11px;color:var(--dim)">„Próg" to granice zaliczenia testu przez sterownik. Wartość blisko granicy znaczy, że monitor jest bliski zapalenia kodu.</p>';
+  await dbPut("freeze",{session:sessionId,seq:++seq,ts_wall:wall(),ts_mono:mono(),kind:"monitors_mode06",
+    dtc:null,fuel_state:fuelState,odometer_km:currentOdometer(),values:rows});
+  event("INFO","MONITORY_06",{rekordow:rows.length});
+}
+
 /* Standardowy PID rodzaju paliwa. Sterownik nie wie o instalacji gazowej, więc niemal na pewno
    zwróci „benzyna" — ale kod 0x0E oznacza „dwupaliwowy, pracuje na LPG" i rozstrzygnąłby temat. */
 const FUEL_TYPE={1:"benzyna",2:"metanol",3:"etanol",4:"diesel",5:"LPG",6:"CNG",7:"propan",8:"elektryczny",
@@ -1320,6 +1484,8 @@ $("#suspLpg").onclick=()=>resolveSuspicion("LPG");
 $("#suspPb").onclick=()=>resolveSuspicion("BENZYNA");
 $("#suspNone").onclick=()=>resolveSuspicion("none");
 $("#readFreeze").onclick=readFreezeFrame;
+$("#pressTest").onclick=pressureTest;
+$("#readMon").onclick=readMonitors;
 $("#discRun").onclick=()=>discoverDids($("#discPrefix").value);
 $("#openSettings").onclick=()=>{$("#settings").classList.add("show")};
 $("#closeSettings").onclick=()=>{$("#settings").classList.remove("show")};
