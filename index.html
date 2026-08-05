@@ -206,7 +206,7 @@
 <script>
 "use strict";
 
-const APP_VERSION="0.12.1";
+const APP_VERSION="0.12.2";
 /* Muszą być zadeklarowane przed pierwszym użyciem niżej (const nie jest hoistowany). */
 /* MISFIRE_READS: odczytów pod jednym przełączeniem nagłówka. Zmierzone na realnej serii:
    4 odczyty dają tylko ×1,1 więcej zarejestrowanych wypadów, a wydłużają cykl o ~0,5 s,
@@ -868,7 +868,7 @@ async function buildExport(includeChunks,snap){
   const[chunks,exchanges,samples,events,frames,freeze,disc]=await Promise.all(
     [includeChunks?dbAllFor("chunk",sid):Promise.resolve([]),dbAllFor("exchange",sid),dbAllFor("sample",sid),dbAllFor("event",sid),dbAllFor("frame",sid),dbAllFor("freeze",sid),dbAllFor("discovery",sid)]);
   const manifest={record_type:"capture_manifest",schema:"xc70.capture_manifest.v2",session_id:sid,
-    app_version:s.app_version||APP_VERSION,started_wall:s.started_wall,ended_wall:s.last_wall||wall(),
+    app_version:s.legacy?(s.app_version||null):(s.app_version||APP_VERSION),started_wall:s.started_wall,ended_wall:s.last_wall||wall(),
     duration_ms:s.duration_ms||0,write_flush_complete:true,
     adapter:s.adapter||null,
     scope:{transport:"BLE ELM",policy:"read-only allowlist",endpoints:ENDPOINTS},
@@ -948,13 +948,23 @@ async function scanPending(){
   for(const r of rows){
     const samples=await dbCountFor("sample",r.id), exchanges=await dbCountFor("exchange",r.id);
     if(!samples&&!exchanges)continue;                 /* wpis bez danych: nie ma czego słać */
-    let started=r.started_wall, ended=r.last_wall;
-    if(!started){                                     /* sesja bez dziennika — czas z jej własnych zdarzeń */
+    let started=r.started_wall, ended=r.last_wall, dur=r.duration_ms, ver=r.app_version, fuel=r.fuel_state;
+    if(r.legacy){
+      /* Sesja bez wpisu w dzienniku. Wszystko, co o niej wiemy, jest w jej własnych rekordach —
+         i tylko to wolno nam wpisać do nagłówka. Wcześniej dostawała wersję aplikacji, która ją
+         DOSYŁAŁA, oraz czas trwania 0, co fałszowało historię pomiarów. */
       const ev=await dbAllFor("event",r.id);
-      if(ev.length){started=ev[0].ts_wall;ended=ev[ev.length-1].ts_wall}
+      if(ev.length){
+        started=ev[0].ts_wall;ended=ev[ev.length-1].ts_wall;
+        dur=Math.max(0,Math.round((ev[ev.length-1].ts_mono||0)-(ev[0].ts_mono||0)));
+        const v=ev.map(e=>String(e.text||"").match(/Data Console (\d+\.\d+\.\d+)/)).find(Boolean);
+        ver=v?v[1]:null;
+        const f=ev.map(e=>String(e.text||"").match(/^FUEL_STATE (\w+)/)).filter(Boolean).pop();
+        fuel=f?f[1]:null;
+      }else{ver=null;dur=null}
     }
     out.push({...r,samples,exchanges,started_wall:started||null,last_wall:ended||started||null,
-      interrupted:!r.closed});
+      duration_ms:dur??null,app_version:ver??null,fuel_state:fuel??null,interrupted:!r.closed});
   }
   return out.sort((a,b)=>String(a.started_wall).localeCompare(String(b.started_wall)));
 }
@@ -1260,7 +1270,12 @@ async function listenBus(seconds){
     ids:Object.entries(byId).map(([id,g])=>({id,n:g.n,bytes:g.len,first:g.first,last:g.last})),
     frames:frames.map(f=>({id:f.id,d:f.data.join(" ")}))};
   await dbPut("frame",capture);
-  await runCommands(["ATH0","ATCAF1","ATCRA 7E8","ATSH 7E0"]);   /* przywróć tryb pomiarowy */
+  /* ATH1, NIE ATH0 — zostałość po torze sprzed 0.8.2. Bez nagłówków linia odpowiedzi nie ma
+     identyfikatora nadawcy, parser ramek odrzuca wszystko i każde zapytanie kończy się
+     przeterminowaniem. Zmierzone na sesji z 05.08: 98,8% skuteczności przed nasłuchem,
+     35,7% po nim. Przywracamy też sterowanie przepływem, którego ta linijka nie ruszała. */
+  await runCommands(["ATH1","ATCAF1"].concat(endpointCommands("7E0","7E8")));
+  await ensureBusReady("po nasłuchu");
   refresh();
   const rows=Object.entries(byId).sort((a,b)=>b[1].n-a[1].n);
   if(!rows.length){
@@ -1323,6 +1338,22 @@ async function scanModules(){
   refresh();
 }
 
+/* Jedno zapytanie kontrolne. Gdy adapter zgubił ustawienia, cisza wygląda dokładnie tak samo
+   jak niesprawny samochód — a to dwie zupełnie różne diagnozy. Zamiast zgadywać, sprawdzamy
+   i w razie potrzeby wgrywamy profil od nowa. */
+async function ensureBusReady(gdzie){
+  if(!connected)return false;
+  const probe=await requestVehicle("010C",null,POLL_TIMEOUT);
+  if(probe.correlation&&probe.correlation.pass)return true;
+  event("ERROR","ADAPTER_ZGUBIL_USTAWIENIA",{gdzie,status:probe.status});
+  resetIsoTp();
+  await runCommands(["ATE0","ATL0","ATS1","ATH1","ATAL","ATAT1","ATST 08","ATCAF1","ATSP6"].concat(endpointCommands("7E0","7E8")));
+  const again=await requestVehicle("010C",null,POLL_TIMEOUT);
+  const ok=!!(again.correlation&&again.correlation.pass);
+  event(ok?"INFO":"ERROR",ok?"ADAPTER_ODZYSKANY":"ADAPTER_NIE_ODPOWIADA",{gdzie,status:again.status});
+  return ok;
+}
+
 /* ═══════════ ZWOLNIENIE MAGISTRALI POD CZYNNOŚĆ LABORATORYJNĄ ═══════════
    Monitor startuje sam po połączeniu, więc każda czynność wymagająca wolnej magistrali
    odbijała się od warunku „zatrzymaj monitor" — a większość robiła to PO CICHU, bez słowa
@@ -1339,9 +1370,13 @@ async function freeBus(){
        i mógłby wystartować wysyłkę już po powrocie z tej funkcji. */
     holdAutoPush=true;monitoring=false;refresh();
     if(!await waitForTransportIdle())return "Monitor nie zwolnił magistrali — spróbuj jeszcze raz.";
-    return null;
+    return null;   /* monitor właśnie działał, więc adapter na pewno jest skonfigurowany */
   }
   if(inflight||queue.length||drain||settle)return "Transport zajęty, spróbuj za moment.";
+  /* Magistrala stoi od dłuższej chwili — upewnij się, że adapter nie zgubił ustawień,
+     inaczej pusty wynik czynności zostałby wzięty za odpowiedź samochodu. */
+  if(!await ensureBusReady("przed czynnością"))
+    return "Adapter nie odpowiada na zapytania kontrolne — odłącz i połącz ponownie.";
   return null;
 }
 
