@@ -210,7 +210,7 @@
 <script>
 "use strict";
 
-const APP_VERSION="0.13.1";
+const APP_VERSION="0.13.2";
 /* Muszą być zadeklarowane przed pierwszym użyciem niżej (const nie jest hoistowany). */
 /* MISFIRE_READS: odczytów pod jednym przełączeniem nagłówka. Zmierzone na realnej serii:
    4 odczyty dają tylko ×1,1 więcej zarejestrowanych wypadów, a wydłużają cykl o ~0,5 s,
@@ -1440,7 +1440,14 @@ async function pressureTest(){
    na tym aucie: 0603-0607 odpowiadają „7F 06 12" (nieobsługiwane), a MID 02 niesie napięcia
    w miliwoltach i czasy w milisekundach, czyli jest monitorem sondy lambda. Dlatego nie
    przypisujemy MID-om nazw cylindrów — czytamy to, co sterownik faktycznie wystawia. */
-const MID_ZNANE={"01":"Monitor układu (MID 01)","02":"Monitor sondy lambda (MID 02)"};
+const MID_ZNANE={"01":"Monitor układu (MID 01)","02":"Monitor sondy lambda (MID 02)",
+  "A1":"Wypady — dane ogólne","A2":"Wypady CYLINDER 1","A3":"Wypady CYLINDER 2","A4":"Wypady CYLINDER 3",
+  "A5":"Wypady CYLINDER 4","A6":"Wypady CYLINDER 5","A7":"Wypady CYLINDER 6","A8":"Wypady CYLINDER 7",
+  "A9":"Wypady CYLINDER 8","AA":"Wypady CYLINDER 9","AB":"Wypady CYLINDER 10"};
+/* Zmierzone 06.08: mapa monitorów wskazała A2-A7 (i tylko je z zakresu wypadów), co zgadza się
+   z normą — to jedyne miejsce, gdzie ten sterownik podaje wypady OSOBNO dla cylindrów, z ich
+   standardową, fizyczną numeracją. Dwa testy na cylinder: */
+const TID_WYPADY={0x0B:"średnia z 10 cykli jazdy",0x0C:"bieżący cykl jazdy"};
 /* Skalowania wg normy. Wpisujemy WYŁĄCZNIE te, których jesteśmy pewni; reszta zostaje surowa,
    z widocznym numerem UAS. Identyfikatory od 0x80 w górę to wersje ze znakiem tych z dołu. */
 const UAS={0x01:{k:1,u:""},0x02:{k:0.1,u:""},0x03:{k:0.01,u:""},0x04:{k:0.001,u:""},
@@ -1531,14 +1538,19 @@ async function readMonitors(){
   }
   /* Położenie wartości między progami jest czytelne NIEZALEŻNIE od tego, czy znamy skalowanie —
      i to jest najcenniejsza informacja tego trybu. */
-  const proc=r=>{const z=r.max-r.min;return z>0?Math.round(100*(r.value-r.min)/z):null};
+  /* 0x8000 i 0xFFFF to nie progi, tylko „brak progu". Liczenie z nich procentów dawało
+     bzdury: monitor bez ograniczenia z dołu pokazywał 98% zakresu, a licznik wypadów
+     z górnym progiem 65535 pokazywał 0% i wyglądał na zdrowy niezależnie od wartości. */
+  const bezDol=r=>r.raw_min===-32768||r.raw_min===32768, bezGora=r=>r.raw_max===65535;
+  const proc=r=>{if(bezDol(r)||bezGora(r))return null;const z=r.max-r.min;return z>0?Math.round(100*(r.value-r.min)/z):null};
+  const progOpis=r=>bezDol(r)&&bezGora(r)?"bez progów":bezDol(r)?("próg górny "+r.max):bezGora(r)?("próg dolny "+r.min):("próg "+r.min+" … "+r.max);
   const wiersz=r=>{
-    const p=proc(r), poza=r.value>r.max||r.value<r.min;
+    const p=proc(r), poza=(!bezGora(r)&&r.value>r.max)||(!bezDol(r)&&r.value<r.min);
     return '<div style="padding:4px 0;border-bottom:1px solid var(--line)">'+
       '<div style="display:flex;justify-content:space-between;gap:8px">'+
-      '<span style="color:var(--dim)">'+r.name+' · test '+r.tid.toString(16).toUpperCase().padStart(2,"0")+'</span>'+
+      '<span style="color:var(--dim)">'+r.name+' · '+(TID_WYPADY[r.tid]||("test "+r.tid.toString(16).toUpperCase().padStart(2,"0")))+'</span>'+
       '<b'+(poza?' style="color:#e66"':'')+'>'+r.value+' '+r.unit+'</b></div>'+
-      '<div style="font-size:10px;color:var(--dim)">próg '+r.min+' … '+r.max+
+      '<div style="font-size:10px;color:var(--dim)">'+progOpis(r)+
       (p!=null?'  ·  '+p+'% zakresu':'')+(r.known?'':'  ·  skalowanie UAS '+r.uas.toString(16).toUpperCase()+' nieznane, wartość surowa')+'</div></div>';
   };
   const midy=[...new Set(rows.map(r=>r.mid))];
