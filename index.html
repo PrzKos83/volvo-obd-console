@@ -206,7 +206,7 @@
 <script>
 "use strict";
 
-const APP_VERSION="0.12.2";
+const APP_VERSION="0.13.0";
 /* Muszą być zadeklarowane przed pierwszym użyciem niżej (const nie jest hoistowany). */
 /* MISFIRE_READS: odczytów pod jednym przełączeniem nagłówka. Zmierzone na realnej serii:
    4 odczyty dają tylko ×1,1 więcej zarejestrowanych wypadów, a wydłużają cykl o ~0,5 s,
@@ -1432,12 +1432,18 @@ async function pressureTest(){
    Format rekordu: <MID> <TID> <UAS> <wartość hi> <lo> <min hi> <lo> <max hi> <lo> — 9 bajtów,
    w jednej odpowiedzi może być ich kilka. Wartość liczy się według identyfikatora skalowania
    (UAS); dla liczników wypadania to zwykłe sztuki. Nieznanego UAS nie udajemy, że rozumiemy. */
-const MID_MISFIRE={"01":"Wypady — dane ogólne","02":"Wypady CYL 1","03":"Wypady CYL 2","04":"Wypady CYL 3",
-  "05":"Wypady CYL 4","06":"Wypady CYL 5","07":"Wypady CYL 6","08":"Wypady CYL 7","09":"Wypady CYL 8",
-  "0A":"Wypady CYL 9","0B":"Wypady CYL 10"};
+/* Nazwy monitorów: układ „MID 02-07 = cylindry 1-6" to konwencja, NIE gwarancja. Zmierzone
+   na tym aucie: 0603-0607 odpowiadają „7F 06 12" (nieobsługiwane), a MID 02 niesie napięcia
+   w miliwoltach i czasy w milisekundach, czyli jest monitorem sondy lambda. Dlatego nie
+   przypisujemy MID-om nazw cylindrów — czytamy to, co sterownik faktycznie wystawia. */
+const MID_ZNANE={"01":"Monitor układu (MID 01)","02":"Monitor sondy lambda (MID 02)"};
+/* Skalowania wg normy. Wpisujemy WYŁĄCZNIE te, których jesteśmy pewni; reszta zostaje surowa,
+   z widocznym numerem UAS. Identyfikatory od 0x80 w górę to wersje ze znakiem tych z dołu. */
 const UAS={0x01:{k:1,u:""},0x02:{k:0.1,u:""},0x03:{k:0.01,u:""},0x04:{k:0.001,u:""},
-  0x0A:{k:0.25,u:"V"},0x12:{k:0.001,u:"V"},0x18:{k:0.001,u:"s"},0x19:{k:0.01,u:"s"},
-  0x24:{k:1,u:"szt."},0x25:{k:1,u:"km"},0x27:{k:0.01,u:"%"},0x2F:{k:0.1,u:"%"},0x30:{k:1,u:"licz."}};
+  0x05:{k:0.0000305,u:"%"},0x06:{k:0.000305,u:"%"},0x07:{k:0.25,u:"obr/min"},
+  0x08:{k:0.01,u:"km/h"},0x09:{k:1,u:"km/h"},0x0A:{k:0.122,u:"mV"},0x0B:{k:0.001,u:"V"},
+  0x0C:{k:0.01,u:"V"},0x10:{k:1,u:"ms"},0x11:{k:100,u:"ms"},0x12:{k:1,u:"s"}};
+function skala(uas){const zn=uas>=0x80, s=UAS[uas&0x7F];return{zn,k:s?s.k:1,u:s?s.u:"surowo",known:!!s}}
 function decodeMonitorRecords(bytes){
   const out=[];
   let i=bytes.indexOf(0x46);
@@ -1445,46 +1451,99 @@ function decodeMonitorRecords(bytes){
   i++;
   while(i+8<bytes.length){
     const mid=bytes[i],tid=bytes[i+1],uas=bytes[i+2];
-    const raw=(bytes[i+3]<<8)|bytes[i+4], lo=(bytes[i+5]<<8)|bytes[i+6], hi=(bytes[i+7]<<8)|bytes[i+8];
-    const s=UAS[uas];
+    const s=skala(uas);
+    const w=(a,b)=>{const v=(a<<8)|b;return s.zn&&v>=32768?v-65536:v};
+    const raw=w(bytes[i+3],bytes[i+4]), lo=w(bytes[i+5],bytes[i+6]), hi=w(bytes[i+7],bytes[i+8]);
     out.push({mid:mid.toString(16).toUpperCase().padStart(2,"0"),tid,uas,
-      value:s?raw*s.k:raw, min:s?lo*s.k:lo, max:s?hi*s.k:hi, unit:s?s.u:"surowo", known:!!s});
+      value:+(raw*s.k).toFixed(4), min:+(lo*s.k).toFixed(4), max:+(hi*s.k).toFixed(4),
+      raw,raw_min:lo,raw_max:hi, unit:s.u, known:s.known, signed:s.zn});
     i+=9;
   }
   return out;
 }
+/* Mapa obsługiwanych monitorów: 0600 opisuje MID-y 01-20, 0620 kolejne 20 i tak dalej.
+   Odpowiedź to cztery bajty bitów, a nie rekordy — osobny dekoder, inaczej parser rekordów
+   sklecił ze śmieci coś, co wygląda jak dane. */
+const MID_BLOKI=["00","20","40","60","80","A0"];
+function decodeMidBitmap(bytes,baseHex){
+  const i=bytes.indexOf(0x46);
+  if(i<0||bytes.length<i+6)return null;
+  if(bytes[i+1]!==parseInt(baseHex,16))return null;
+  const base=parseInt(baseHex,16), out=[];
+  const bits=[bytes[i+2],bytes[i+3],bytes[i+4],bytes[i+5]];
+  for(let k=0;k<32;k++) if((bits[k>>3]>>(7-(k&7)))&1) out.push((base+k+1).toString(16).toUpperCase().padStart(2,"0"));
+  return out;
+}
+/* 0600 potrafi wygasnąć przy pierwszej próbie (zmierzone) — nie wolno na tej podstawie
+   uznać, że sterownik nie ma monitorów. */
+async function midyObslugiwane(){
+  const znalezione=[];let ktorykolwiek=false;
+  for(const blok of MID_BLOKI){
+    if(!connected)break;
+    let lista=null;
+    for(let n=0;n<2&&!lista;n++){
+      const res=await requestVehicle("06"+blok,"ECM",POLL_TIMEOUT);
+      if(res.correlation&&res.correlation.pass&&res.meta&&res.meta.status!=="NEGATIVE_RESPONSE"){
+        const b=(res.text||"").toUpperCase().split(/\s+/).filter(x=>/^[0-9A-F]{2}$/.test(x)).map(x=>parseInt(x,16));
+        lista=decodeMidBitmap(b,blok);
+      }
+      await delay(REQUEST_GAP_MS);
+    }
+    if(!lista)continue;
+    ktorykolwiek=true;
+    znalezione.push(...lista);
+    const nastepny=(parseInt(blok,16)+0x20).toString(16).toUpperCase().padStart(2,"0");
+    if(!lista.includes(nastepny))break;
+  }
+  return {lista:[...new Set(znalezione)],zMapy:ktorykolwiek};
+}
 async function readMonitors(){
   const zajete=await freeBus();
   if(zajete){$("#monResult").innerHTML='<div class="v FAIL">'+zajete+'</div>';return}
-  $("#monResult").innerHTML='<div class="v INFO">Odczytuję monitory…</div>';
-  const rows=[];let odmowa=null;
-  for(const mid of ["00","01","02","03","04","05","06","07"]){
+  $("#monResult").innerHTML='<div class="v INFO">Szukam obsługiwanych monitorów…</div>';
+  let {lista,zMapy}=await midyObslugiwane();
+  if(!lista.length){
+    /* Bez mapy nie zgadujemy, że monitorów nie ma — pytamy po kolei. */
+    $("#monResult").innerHTML='<div class="v INFO">Mapa monitorów niedostępna, przepytuję po kolei…</div>';
+    lista=[];for(let i=1;i<=0x30;i++)lista.push(i.toString(16).toUpperCase().padStart(2,"0"));
+  }
+  $("#monResult").innerHTML='<div class="v INFO">Odczytuję '+lista.length+' monitorów…</div>';
+  const rows=[],odmowy=[],ciche=[];
+  for(const mid of lista){
     if(!connected)break;
     const res=await requestVehicle("06"+mid,"ECM",POLL_TIMEOUT);
-    if(res.meta&&res.meta.status==="NEGATIVE_RESPONSE"){odmowa=odmowa||("7F 06 "+(res.meta.nrc||"?"));await delay(REQUEST_GAP_MS);continue}
-    if(!(res.correlation&&res.correlation.pass)){await delay(REQUEST_GAP_MS);continue}
-    const bytes=(res.text||"").toUpperCase().split(/\s+/).filter(x=>/^[0-9A-F]{2}$/.test(x)).map(x=>parseInt(x,16));
-    for(const r of decodeMonitorRecords(bytes))rows.push({...r,name:MID_MISFIRE[r.mid]||("Monitor "+r.mid)});
+    if(res.meta&&res.meta.status==="NEGATIVE_RESPONSE"){odmowy.push(mid);await delay(REQUEST_GAP_MS);continue}
+    if(!(res.correlation&&res.correlation.pass)){ciche.push(mid);await delay(REQUEST_GAP_MS);continue}
+    const b=(res.text||"").toUpperCase().split(/\s+/).filter(x=>/^[0-9A-F]{2}$/.test(x)).map(x=>parseInt(x,16));
+    for(const r of decodeMonitorRecords(b))rows.push({...r,name:MID_ZNANE[r.mid]||("Monitor MID "+r.mid)});
     await delay(REQUEST_GAP_MS);
   }
+  event("INFO","MONITORY_06",{rekordow:rows.length,z_mapy:zMapy,pytano:lista.length,
+    odmowy:odmowy.length,ciche:ciche.length,midy_z_danymi:[...new Set(rows.map(r=>r.mid))]});
   if(!rows.length){
-    $("#monResult").innerHTML='<div class="v INCONCLUSIVE">Sterownik nie zwrócił monitorów'+
-      (odmowa?" (odmowa "+odmowa+")":"")+'.</div>';
-    event("INFO","MONITORY_06",{rekordow:0,odmowa});return;
+    $("#monResult").innerHTML='<div class="v INCONCLUSIVE">Żaden z '+lista.length+
+      ' monitorów nie zwrócił danych (odmów: '+odmowy.length+', bez odpowiedzi: '+ciche.length+').</div>';
+    return;
   }
+  /* Położenie wartości między progami jest czytelne NIEZALEŻNIE od tego, czy znamy skalowanie —
+     i to jest najcenniejsza informacja tego trybu. */
+  const proc=r=>{const z=r.max-r.min;return z>0?Math.round(100*(r.value-r.min)/z):null};
   const wiersz=r=>{
-    const poza=r.known&&(r.value>r.max||r.value<r.min);
-    return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--line)">'+
-      '<span style="color:var(--dim)">'+r.name+' <span style="opacity:.6">·T'+r.tid.toString(16).toUpperCase()+'</span></span>'+
-      '<b'+(poza?' style="color:var(--bad,#e66)"':'')+'>'+r.value+' '+r.unit+'</b>'+
-      '<span style="color:var(--dim);font-size:10px">próg '+r.min+'–'+r.max+'</span></div>';
+    const p=proc(r), poza=r.value>r.max||r.value<r.min;
+    return '<div style="padding:4px 0;border-bottom:1px solid var(--line)">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px">'+
+      '<span style="color:var(--dim)">'+r.name+' · test '+r.tid.toString(16).toUpperCase().padStart(2,"0")+'</span>'+
+      '<b'+(poza?' style="color:#e66"':'')+'>'+r.value+' '+r.unit+'</b></div>'+
+      '<div style="font-size:10px;color:var(--dim)">próg '+r.min+' … '+r.max+
+      (p!=null?'  ·  '+p+'% zakresu':'')+(r.known?'':'  ·  skalowanie UAS '+r.uas.toString(16).toUpperCase()+' nieznane, wartość surowa')+'</div></div>';
   };
-  $("#monResult").innerHTML='<div class="v PASS">'+rows.length+' wyników testów sterownika:</div>'+
+  const midy=[...new Set(rows.map(r=>r.mid))];
+  $("#monResult").innerHTML='<div class="v PASS">'+rows.length+' wyników z '+midy.length+' monitorów ('+midy.join(", ")+')</div>'+
     '<div style="font:11px var(--mono)">'+rows.map(wiersz).join("")+'</div>'+
-    '<p style="font-size:11px;color:var(--dim)">„Próg" to granice zaliczenia testu przez sterownik. Wartość blisko granicy znaczy, że monitor jest bliski zapalenia kodu.</p>';
+    '<p style="font-size:11px;color:var(--dim)">Sterownik nie musi wystawiać liczników wypadania osobno dla cylindrów — na tym aucie MID 03–07 odpowiadają „nieobsługiwane". Wartość blisko progu znaczy, że monitor jest bliski zapalenia kodu.</p>';
   await dbPut("freeze",{session:sessionId,seq:++seq,ts_wall:wall(),ts_mono:mono(),kind:"monitors_mode06",
-    dtc:null,fuel_state:fuelState,odometer_km:currentOdometer(),values:rows});
-  event("INFO","MONITORY_06",{rekordow:rows.length});
+    dtc:null,fuel_state:fuelState,odometer_km:currentOdometer(),
+    supported_from_bitmap:zMapy,queried:lista,denied:odmowy,silent:ciche,values:rows});
 }
 
 /* Standardowy PID rodzaju paliwa. Sterownik nie wie o instalacji gazowej, więc niemal na pewno
