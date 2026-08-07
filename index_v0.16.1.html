@@ -1,0 +1,2686 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#08111d">
+<!-- Telefon potrafi podać starą kopię pliku po podmianie na serwerze. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Czcionki ładują się BEZ blokowania renderowania. Zmierzone w Chromium: gdy serwer
+     Google nie odpowiada (auto bez zasięgu), blokujący arkusz opóźniał pokazanie czegokolwiek
+     o 12,9 s — czyli biały ekran w miejscu, w którym narzędzie ma być gotowe od razu.
+     media="print" sprawia, że arkusz nie wstrzymuje pierwszego rysowania; po pobraniu
+     przełączamy go na "all" i typografia wskakuje. Bez sieci zostają kroje systemowe. -->
+<link rel="stylesheet" media="print" onload="this.media='all';this.onload=null"
+  href="https://fonts.googleapis.com/css2?family=Saira+Semi+Condensed:wght@400;500;600;700&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<title>XC70 Drive Data</title>
+<style>
+:root{
+  --graphite:#12161b; --panel:#1b2128; --panel2:#222a32; --rule:#2b333d;
+  --cream:#e9e4da; --dim:#9aa8b5; --steel:#7fb2c0; --amber:#e5a63c; --red:#cf4a3f; --sage:#6f9b7e;
+  /* nazwy zgodne ze starym kodem, żeby nie przepisywać wszystkich miejsc naraz */
+  --bg:var(--graphite); --txt:var(--cream); --line:var(--rule); --ok:var(--sage);
+  --warn:var(--amber); --err:var(--red); --blue:var(--steel); --purple:var(--steel);
+  --data:"Saira Semi Condensed","Roboto Condensed",system-ui,sans-serif;
+  --ui:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--graphite);color:var(--cream);font-family:var(--ui)}
+body{min-height:100dvh;display:flex;flex-direction:column}
+button,input,select{font:inherit}
+
+/* ---------- pasek górny ---------- */
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;min-width:0;
+  padding:9px 12px;background:var(--graphite);border-bottom:1px solid var(--rule)}
+.top .logo{width:20px;height:20px;flex:none;border:2px solid var(--steel);border-radius:2px;flex:none}
+.top .nm{font-family:var(--data);font-size:19px;font-weight:600;letter-spacing:.04em;white-space:nowrap}
+.top .ver{font-family:var(--mono);font-size:12px;color:var(--dim);white-space:nowrap}
+.grow{flex:1}
+.iconbtn{min-width:38px;min-height:50px;background:none;border:0;color:var(--dim);font-size:23px;cursor:pointer}
+.status{display:none;align-items:center;gap:5px;font-family:var(--mono);font-size:13px;
+  letter-spacing:.04em;color:var(--dim);white-space:nowrap;background:none;border:0;padding:0}
+.status:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--dim);flex:none}
+.status.on:before{background:var(--sage)} .status.warn:before{background:var(--amber)}
+.status.err:before{background:var(--red)}
+
+/* ---------- pasek magistrali ---------- */
+.busbar{position:sticky;top:47px;z-index:19;display:flex;align-items:center;gap:8px;
+  padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--rule)}
+.busbar .dot{width:6px;height:6px;border-radius:50%;background:var(--dim);flex:none}
+.busbar .t{font-family:var(--mono);font-size:15px;letter-spacing:.02em;color:var(--dim);
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.busbar .t b{color:var(--cream);font-weight:500}
+.busbar button{background:none;border:1px solid var(--rule);color:var(--steel);
+  font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+  padding:6px 9px;min-height:44px;cursor:pointer;border-radius:2px;flex:none}
+.busbar button:disabled{color:#7d8994;border-color:var(--rule);cursor:default}
+body[data-bus="run"] .busbar .dot{background:var(--sage)}
+body[data-bus="idle"] .busbar .dot{background:var(--sage)}
+body[data-bus="link"] .busbar .dot{background:var(--steel)}
+body[data-bus="err"]  .busbar .dot{background:var(--red)}
+body[data-bus="paused"] .busbar{background:#2a2318}
+body[data-bus="paused"] .busbar .dot{background:var(--amber)}
+body[data-bus="paused"] .busbar button{color:var(--amber);border-color:var(--amber)}
+
+/* ---------- strony ---------- */
+main{flex:1;width:100%;max-width:760px;margin:0 auto;padding:12px 12px 96px}
+.page{display:none} .page.active{display:block}
+
+/* ---------- gramatyka karty ---------- */
+.card{border:1px solid var(--rule);background:var(--panel);margin-bottom:9px}
+.card>.hd{display:flex;align-items:baseline;gap:8px;padding:13px 13px 9px}
+.card>.hd .t{font-size:18px;font-weight:500}
+.card>.hd .when{font-family:var(--mono);font-size:12px;color:var(--dim)}
+.card .bd{padding:0 13px 13px;font-size:17px;line-height:1.5}
+.card .ft{border-top:1px solid var(--rule);padding:9px 11px;display:flex;align-items:center;
+  gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--dim)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.sh{display:flex;align-items:baseline;gap:8px;margin:16px 0 8px}
+.sh .n{font-family:var(--data);font-size:19px;font-weight:600}
+
+/* ---------- przyciski ---------- */
+button.act,.primary,.secondary,.live{background:var(--steel);border:0;color:#0e1318;
+  font-family:var(--ui);font-size:16px;font-weight:500;padding:9px 13px;min-height:50px;
+  cursor:pointer;border-radius:2px}
+.secondary,.act.ghost{background:none;border:1px solid var(--rule);color:var(--cream)}
+.live{background:none;border:1px solid var(--steel);color:var(--steel)}
+.danger{background:none;border:1px solid var(--red);color:var(--red)}
+button:disabled{background:var(--rule);color:#7d8994;border-color:var(--rule);cursor:not-allowed}
+.bigconnect{width:100%;font-size:20px;padding:16px;min-height:64px}
+.bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 0}
+.bar small{width:100%;color:var(--dim);font-size:16px;line-height:1.45}
+input,select{min-height:50px;color:var(--cream);background:var(--graphite);
+  border:1px solid var(--rule);border-radius:2px;padding:8px 10px}
+
+/* ---------- panel silnika ---------- */
+.eng{border:1px solid var(--rule);background:var(--panel);margin-bottom:9px}
+.eng .hd{display:flex;align-items:baseline;gap:10px;padding:13px 13px 6px;flex-wrap:wrap}
+.eng .hd .t{font-family:var(--data);font-size:19px;font-weight:600;letter-spacing:.02em;white-space:nowrap;flex:none}
+.eng .hd .tg{font-family:var(--mono);font-size:13px;white-space:nowrap;color:var(--steel);cursor:pointer;
+  background:none;border:0;padding:4px 0;min-height:44px}
+.eng .hd .stale{font-family:var(--mono);font-size:12px;letter-spacing:.12em;color:var(--amber)}
+.bars{display:flex;gap:1px;background:var(--rule);margin-top:6px}
+.bcell{flex:1;background:var(--panel);padding:6px 2px 7px;text-align:center;min-width:0}
+.bcell .n{font-family:var(--mono);font-size:12px;color:var(--dim)}
+.bcell .bar2{height:56px;display:flex;align-items:flex-end;justify-content:center;gap:2px;margin:5px 0 4px}
+.bcell .bar2 i{width:12px;max-width:56%;background:var(--dim);display:block}
+.bcell .bar2 i.pb{background:#4a5560}
+.bcell .r{font-family:var(--data);font-size:26px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.bcell .s{font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:2px}
+.bcell[data-s="warn"] .r{color:var(--amber)} .bcell[data-s="warn"] .bar2 i:first-child{background:var(--amber)}
+.bcell[data-s="bad"] .r{color:var(--red)} .bcell[data-s="bad"] .bar2 i:first-child{background:var(--red)}
+.rail svg{display:block;width:100%}
+.engft{padding:6px 11px 10px;display:flex;gap:11px;flex-wrap:wrap;font-family:var(--mono);
+  font-size:12px;color:var(--dim)}
+.engft b{color:var(--cream);font-weight:500}
+.engft .hint{color:var(--amber)}
+
+/* ---------- karty parametrów ---------- */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);
+  border:1px solid var(--rule);margin-bottom:9px}
+.grid:empty{display:none}
+.pc{background:var(--panel);padding:12px 12px;min-width:0}
+.pc .l{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.pc .v{font-family:var(--data);font-size:35px;font-weight:600;line-height:1.05;margin-top:3px;
+  font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
+.pc .v u{text-decoration:none;font-size:14px;color:var(--dim);font-weight:400;margin-left:3px}
+.pc .ref{font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:3px;line-height:1.35}
+.pc[data-s="warn"] .v,.pc[data-s="warn"] .ref{color:var(--amber)}
+.pc[data-s="stale"] .v{color:#7d8994} .pc[data-s="stale"] .ref{color:#7d8994}
+.adv{width:100%;background:var(--panel);border:1px solid var(--rule);color:var(--dim);
+  font-family:var(--mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;
+  padding:11px;min-height:44px;cursor:pointer;text-align:left;border-radius:2px}
+.advbody{display:none;margin-top:9px} .advbody.open{display:block}
+
+/* ---------- alerty ---------- */
+#alerts:empty{display:none}
+.alert{border:1px solid var(--red);border-left-width:2px;background:#241618;
+  padding:9px 11px;margin-bottom:9px;cursor:pointer}
+.alert.w{border-color:var(--amber);background:#241f16}
+.alert .t{font-size:17px;font-weight:500;color:var(--cream)}
+.alert .d{font-size:16px;color:var(--dim);margin-top:3px;line-height:1.4}
+.alert .go{font-family:var(--mono);font-size:12px;color:var(--red);margin-top:5px;
+  letter-spacing:.08em;text-transform:uppercase}
+.alert.w .go{color:var(--amber)}
+@keyframes pulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 0 2px var(--steel)}}
+.flash{animation:pulse 1.5s}
+
+/* ---------- pole wyniku ---------- */
+.res{border:1px solid var(--rule);background:var(--panel2);margin-top:9px}
+.res .rh{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:1px solid var(--rule)}
+.res .rh .e{font-family:var(--mono);font-size:12px;letter-spacing:.14em;color:var(--dim)}
+.res .rb{padding:9px 10px;font-size:17px;line-height:1.5;overflow-x:auto}
+.res .rb .empty{color:#7d8994;font-family:var(--mono);font-size:14px}
+.tbl{width:100%;border-collapse:collapse;font-size:16px}
+.tbl th{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--dim);text-align:right;padding:3px 4px;font-weight:400;border-bottom:1px solid var(--rule)}
+.tbl th:first-child{text-align:left}
+.tbl td{padding:4px;text-align:right;font-variant-numeric:tabular-nums;font-family:var(--data);font-size:19px}
+.tbl td:first-child{text-align:left;font-family:var(--mono);font-size:14px;color:var(--dim)}
+.tbl tr[data-s="bad"] td{color:var(--red)} .tbl tr[data-s="warn"] td{color:var(--amber)}
+
+/* stare klasy werdyktów przemapowane na nową gramatykę */
+.v{margin:9px 0;padding:10px 11px;border:1px solid var(--rule);background:var(--panel2);
+  font-size:17px;line-height:1.5;border-left-width:2px}
+.v.PASS{border-left-color:var(--sage)} .v.FAIL{border-left-color:var(--red)}
+.v.INFO,.v.INCONCLUSIVE{border-left-color:var(--amber)}
+
+/* ---------- sesja ---------- */
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);
+  border:1px solid var(--rule);margin-bottom:9px}
+.stats>div{background:var(--panel);padding:9px 10px}
+.stats .l{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.stats .v2{font-family:var(--data);font-size:29px;font-weight:600;margin-top:2px;
+  font-variant-numeric:tabular-nums;padding:0;border:0;background:none}
+.odo{display:flex;align-items:baseline;gap:8px}
+.odo strong{font-family:var(--data);font-size:44px;font-weight:600;font-variant-numeric:tabular-nums}
+.log{display:flex;flex-direction:column;gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.li{background:var(--panel);padding:8px 10px;display:flex;gap:9px;align-items:baseline}
+.li .km{font-family:var(--mono);font-size:13px;color:var(--steel);width:56px;flex:none}
+.li .d{font-size:17px;line-height:1.35;flex:1;min-width:0}
+.li .d small{display:block;color:var(--dim);font-size:14px;margin-top:2px;font-family:var(--mono)}
+.li .c{font-family:var(--data);font-size:19px;color:var(--dim);flex:none}
+
+/* ---------- dziennik ---------- */
+#log{height:30dvh;overflow:auto;padding:10px;border:1px solid var(--rule);background:#0d1114;
+  font:10.5px/1.5 var(--mono);white-space:pre-wrap;word-break:break-word}
+.line .time{color:#7d8994}
+.line.tx{color:var(--steel)} .line.rx{color:var(--sage)} .line.err{color:var(--red)}
+.line.sys{color:var(--amber)} .line.sample{color:var(--dim)}
+
+/* ---------- nawigacja ---------- */
+.bottomnav{position:fixed;z-index:20;left:0;right:0;bottom:0;display:grid;
+  grid-template-columns:repeat(3,1fr);background:var(--panel);border-top:1px solid var(--rule);
+  padding-bottom:env(safe-area-inset-bottom)}
+.bottomnav button{background:none;border:0;color:var(--dim);font-family:var(--mono);font-size:13px;
+  letter-spacing:.1em;text-transform:uppercase;padding:9px 4px 11px;min-height:64px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:5px}
+.bottomnav button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.5;
+  stroke-linecap:round;stroke-linejoin:round}
+.bottomnav button.active{color:var(--steel)}
+
+/* ---------- modale ---------- */
+.fuel-modal{position:fixed;z-index:50;inset:0;display:none;place-items:center;padding:18px;
+  background:rgba(5,8,11,.82)}
+.fuel-modal.show{display:grid}
+.fuel-dialog{width:min(100%,460px);max-height:88dvh;overflow-y:auto;padding:16px;
+  border:1px solid var(--rule);background:var(--panel)}
+.fuel-dialog h2{font-family:var(--data);font-size:26px;font-weight:600;margin:6px 0 10px}
+.fuel-dialog p{color:var(--dim);font-size:17px;line-height:1.5;margin:0 0 12px}
+.fuel-switch{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);
+  border:1px solid var(--rule);margin-bottom:9px}
+.fuel-switch button{min-height:60px;border:0;background:var(--panel);color:var(--dim);
+  font-size:19px;font-weight:500;border-radius:0}
+.fuel-switch button.active{background:var(--panel2);color:var(--cream);box-shadow:inset 0 0 0 1px var(--steel)}
+details{border-top:1px solid var(--rule);margin-top:10px}
+summary{padding:11px 0;color:var(--dim);font-family:var(--mono);font-size:13px;
+  letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+#candidates{display:flex;gap:6px;flex-wrap:wrap}
+.badge{font-family:var(--mono);font-size:12px;letter-spacing:.06em;padding:4px 7px;
+  border:1px solid var(--rule);color:var(--dim)}
+.empty-state{grid-column:1/-1;padding:22px 14px;text-align:center;color:var(--dim);
+  font-family:var(--mono);font-size:14px;background:var(--panel)}
+.kroki{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:1px;
+  background:var(--rule);border:1px solid var(--rule)}
+.kroki li{background:var(--panel);padding:9px 10px;display:flex;align-items:baseline;gap:9px;
+  font-size:17px;line-height:1.4}
+.kroki .ico{font-family:var(--mono);font-size:16px;width:14px;flex:none;color:var(--dim)}
+.kroki li[data-k="run"] .ico{color:var(--steel)} .kroki li[data-k="ok"] .ico{color:var(--sage)}
+.kroki li[data-k="err"] .ico{color:var(--red)} .kroki li[data-k="err"]{color:var(--red)}
+.kroki li[data-k="wait"]{color:#7d8994}
+.kroki .det{display:block;font-family:var(--mono);font-size:13px;color:var(--dim);margin-top:3px}
+.qrow{background:var(--panel);border:1px solid var(--rule);border-top:0;padding:9px 10px;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.qrow .qi{flex:1;min-width:130px;font-size:16px;line-height:1.4}
+.qrow .qi small{display:block;font-family:var(--mono);font-size:13px;color:var(--dim);margin-top:2px}
+.qrow button{min-height:44px;padding:5px 9px;font-size:14px}
+@media(min-width:680px){.grid{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<header class="top">
+  <span class="logo"></span>
+  <span class="nm">T6 · 2014</span>
+  <span class="ver" id="verline">wersja…</span>
+  <span class="grow"></span>
+  <span class="ver" id="device" hidden></span>
+  <button id="openSettings" class="iconbtn" aria-label="Ustawienia" title="Ustawienia">⚙</button>
+</header>
+
+<!-- Pasek stanu magistrali: widoczny na każdej stronie, nigdy nie znika.
+     Stan „wstrzymany" ma własne tło, bo to jedyny stan, w którym bezczynność kosztuje dane. -->
+<div class="busbar" id="busbar">
+  <span class="dot"></span>
+  <button class="status" id="status" hidden></button>
+  <span class="t" id="busText">brak połączenia z autem</span>
+  <span class="grow"></span>
+  <button id="main">Połącz</button>
+  <button id="monitorToggle" disabled>Monitor</button>
+</div>
+
+<main>
+<section class="page active" data-page-panel="live">
+
+  <div id="alerts"></div>
+
+  <div class="card" id="pending" hidden>
+    <div class="hd"><span class="t">Pomiar czeka w pamięci</span><span class="grow"></span>
+      <span class="when" id="pendingCount"></span></div>
+    <div class="bd"><p id="pendingNote" style="margin:0;color:var(--dim)"></p>
+      <div id="pendingStatus"></div></div>
+    <div class="ft"><span class="grow"></span>
+      <button id="pendingPush" class="act">Wyślij zaległe</button>
+      <button id="pendingToggle" class="secondary">Pokaż listę</button>
+      <button id="pendingHide" class="secondary">Ukryj</button></div>
+    <div id="pendingList" hidden></div>
+  </div>
+
+  <!-- FAZA 0: rozłączony — jeden przycisk, bez pustych siatek -->
+  <div class="card" id="connectBox">
+    <div class="hd"><span class="t" id="driveHeadline">Gotowy do odczytu</span></div>
+    <div class="bd"><p id="driveSubline" style="margin:0 0 11px;color:var(--dim)"></p>
+      <button id="mainBig" class="act bigconnect">Połącz z autem</button></div>
+  </div>
+
+  <!-- FAZA 1-3: panel silnika -->
+  <div class="eng" id="engPanel" hidden>
+    <div class="hd">
+      <span class="t">WYPADY ZAPŁONU</span>
+      <span class="stale" id="engStale" hidden>STALE</span>
+      <span class="grow"></span>
+      <button class="tg" id="engFuelTg">paliwo ▸ razem</button>
+      <button class="tg" id="engOrdTg" >układ ▸ zapłon</button>
+    </div>
+    <div class="bars" id="engBars"></div>
+    <div class="rail" id="engRail"></div>
+    <div class="engft" id="engFoot"></div>
+  </div>
+
+  <div class="grid" id="cards"></div>
+  <button class="adv" id="moreBtn" hidden>▸ Więcej parametrów</button>
+  <div class="grid" id="cardsMore" hidden style="margin-top:9px"></div>
+
+  <div class="card" id="postRun" hidden>
+    <div class="hd"><span class="t">Pomiar gotowy</span><span class="grow"></span>
+      <span class="when" id="postRunTitle"></span></div>
+    <div class="bd">
+      <div class="eyebrow" style="margin-bottom:5px">Status wysyłki</div>
+      <div id="repoStatus"></div>
+    </div>
+    <div class="ft"><span id="postRunCount"></span><span class="grow"></span>
+      <button id="pushNow" class="act">Wyślij do repo</button>
+      <button id="export" class="secondary">Pobierz kopię</button>
+      <button id="endSession" class="danger">Zakończ sesję</button></div>
+  </div>
+
+  <div id="verdict"></div>
+</section>
+
+<section class="page" data-page-panel="session">
+  <div class="sh"><span class="n">Podsumowanie sesji</span><span class="grow"></span>
+    <span class="eyebrow" id="fuel">WYBIERZ</span></div>
+  <div class="card"><div class="bd" id="sesSummary" style="padding-top:11px">—</div>
+    <div class="ft"><span>wnioski liczone z danych tej sesji</span></div></div>
+
+  <div class="stats">
+    <div><div class="l">Czas</div><div class="v2" id="sessionTime">00:00</div></div>
+    <div><div class="l">Próbki</div><div class="v2" id="sampleCount">0</div></div>
+    <div><div class="l">Wymiany</div><div class="v2" id="exchangeCount">0</div></div>
+    <div><div class="l">Integralność</div><div class="v2" id="dataState">—</div></div>
+  </div>
+  <p class="eyebrow" id="integrity" style="margin:0 0 9px;text-transform:none;letter-spacing:0"></p>
+
+  <div class="sh"><span class="n">Książka serwisowa</span></div>
+  <div class="card">
+    <div class="hd"><span class="t">Przebieg</span></div>
+    <div class="bd">
+      <div class="odo"><strong id="odoNow">—</strong>
+        <span class="eyebrow" style="text-transform:none;letter-spacing:0" id="odoNote"></span></div>
+      <div class="bar"><input id="odoInput" inputmode="numeric" placeholder="wskazanie licznika" style="flex:1;min-width:130px">
+        <button id="odoSet" class="secondary">Zakotwicz</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="hd"><span class="t">Nowy wpis</span></div>
+    <div class="bd">
+      <div class="bar">
+        <select id="svcCat">
+          <option>EKSPLOATACJA</option><option>ZAPŁON</option><option>LPG</option>
+          <option>UKŁAD PALIWOWY</option><option>HAMULCE</option><option>ZAWIESZENIE</option>
+          <option>ELEKTRYKA</option><option>DIAGNOSTYKA</option><option>INNE</option>
+        </select>
+        <input id="svcCost" placeholder="koszt" style="width:100px">
+      </div>
+      <div class="bar"><input id="svcDesc" placeholder="co zrobiono" style="flex:1;min-width:170px">
+        <button id="svcAdd" class="act">Dodaj</button></div>
+      <div id="svcStatus"></div>
+    </div>
+  </div>
+  <div id="svcList"></div>
+
+  <div class="card" style="margin-top:12px">
+    <div class="hd"><span class="t">Identyfikator sesji</span></div>
+    <div class="bd" style="font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.6"
+      id="session">sesja: —</div>
+  </div>
+</section>
+
+<section class="page" data-page-panel="lab">
+  <div class="sh"><span class="n">Testy</span><span class="grow"></span>
+    <span class="eyebrow">wynik zapamiętany</span></div>
+
+  <div class="card">
+    <div class="hd"><span class="t">Monitory pokładowe (tryb 06)</span></div>
+    <div class="bd"><div class="eyebrow">Ostatnio</div>
+      <div class="lastrun" id="lastMon">—</div></div>
+    <div class="ft"><span>zajmie magistralę na ~12 s</span><span class="grow"></span>
+      <button id="readMon" class="act">Uruchom</button></div>
+    <div class="res"><div class="rh"><span class="e">WYNIK</span><span class="grow"></span>
+      <span class="e" id="stampMon">—</span></div>
+      <div class="rb" id="monResult"><span class="empty">— brak odczytu w tej sesji</span></div></div>
+  </div>
+
+  <div class="card">
+    <div class="hd"><span class="t">Test ciśnienia paliwa</span></div>
+    <div class="bd"><p style="margin:0 0 6px;color:var(--dim);font-size:11px">
+      <b style="color:var(--cream)">Zapłon włączony, silnika nie odpalać.</b> Pompa nabija szynę
+      przez ~2 s po przekręceniu kluczyka.</p>
+      <div class="eyebrow">Ostatnio</div><div class="lastrun" id="lastPress">—</div></div>
+    <div class="ft"><span id="pressNow">zajmie magistralę na ~150 s</span><span class="grow"></span>
+      <button id="pressTest" class="act">Start testu</button></div>
+    <div class="res"><div class="rh"><span class="e">WYNIK</span><span class="grow"></span>
+      <span class="e" id="stampPress">—</span></div>
+      <div class="rb" id="pressResult"><span class="empty">— brak odczytu w tej sesji</span></div></div>
+  </div>
+
+  <div class="card">
+    <div class="hd"><span class="t">Ramka zamrożona</span></div>
+    <div class="bd"><p style="margin:0 0 6px;color:var(--dim);font-size:11px">
+      Zdjęcie warunków z chwili zapisania kodu. <b style="color:var(--cream)">Kasowanie kodu
+      usuwa te dane bezpowrotnie</b> — odczytaj je zanim skasujesz.</p>
+      <div class="eyebrow">Ostatnio</div><div class="lastrun" id="lastFreeze">—</div></div>
+    <div class="ft"><span>zajmie magistralę na ~8 s</span><span class="grow"></span>
+      <button id="readFreeze" class="act">Odczytaj ramkę</button></div>
+    <div class="res"><div class="rh"><span class="e">WYNIK</span><span class="grow"></span>
+      <span class="e" id="stampFreeze">—</span></div>
+      <div class="rb" id="freezeResult"><span class="empty">— brak odczytu w tej sesji</span></div></div>
+  </div>
+
+  <div class="card">
+    <div class="hd"><span class="t">Rodzaj paliwa (PID 51)</span></div>
+    <div class="bd"><div class="eyebrow">Ostatnio</div><div class="lastrun" id="lastFuelType">—</div></div>
+    <div class="ft"><span>zajmie magistralę na ~3 s</span><span class="grow"></span>
+      <button id="readFuelType" class="act">Odczytaj</button></div>
+    <div class="res"><div class="rh"><span class="e">WYNIK</span><span class="grow"></span>
+      <span class="e" id="stampFuelType">—</span></div>
+      <div class="rb" id="fuelTypeResult"><span class="empty">— brak odczytu w tej sesji</span></div></div>
+  </div>
+
+  <div class="sh"><span class="n">Zaawansowane</span></div>
+  <button class="adv" id="advBtn">▸ DID · nasłuch · skan modułów · odkrywanie · dziennik</button>
+  <div class="advbody" id="advBody">
+
+    <div class="card">
+      <div class="hd"><span class="t">Odczyt UDS DID</span><span class="grow"></span>
+        <span class="when">wyłącznie ReadDataByIdentifier</span></div>
+      <div class="bd"><div class="bar">
+        <select id="endpoint"><option value="ECM">ECM 7E0</option><option value="TCM">TCM 7E1</option></select>
+        <input id="did" maxlength="4" placeholder="np. D91C" style="width:110px">
+        <button id="readDid" class="act">Czytaj</button></div>
+        <div class="bar"><button class="secondary" data-did="D91C" data-ecu="ECM">D91C · RPM</button>
+          <button class="secondary" data-did="D9C1" data-ecu="ECM">D9C1 · Rail</button></div>
+        <details><summary>Kandydaci niepotwierdzeni</summary><span id="candidates"></span></details>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hd"><span class="t">Nasłuch magistrali</span><span class="grow"></span>
+        <span class="when">tryb wyłącznie odbiorczy</span></div>
+      <div class="bd"><div class="bar">
+        <select id="listenSecs"><option value="5">5 s</option><option value="8" selected>8 s</option><option value="15">15 s</option></select>
+        <button id="listen" class="act">Nasłuchuj</button>
+        <button id="scanModules" class="secondary">Skan modułów</button></div></div>
+      <div class="res"><div class="rh"><span class="e">WYNIK</span><span class="grow"></span>
+        <span class="e" id="stampListen">—</span></div>
+        <div class="rb" id="listenResult"><span class="empty">— brak odczytu w tej sesji</span></div></div>
+    </div>
+
+    <div class="card">
+      <div class="hd"><span class="t">Odkrywanie identyfikatorów</span><span class="grow"></span>
+        <span class="when">tylko na postoju</span></div>
+      <div class="bd"><div class="bar">
+        <select id="discPrefix"><option>DA</option><option>D9</option><option>DB</option><option>DC</option><option>DD</option><option>F1</option></select>
+        <button id="discRun" class="act">Skanuj zakres</button></div></div>
+      <div class="res"><div class="rh"><span class="e">WYNIK</span><span class="grow"></span>
+        <span class="e" id="stampDisc">—</span></div>
+        <div class="rb" id="discResult"><span class="empty">— brak odczytu w tej sesji</span></div></div>
+    </div>
+
+    <div class="card">
+      <div class="hd"><span class="t">Surowy dziennik</span><span class="grow"></span>
+        <label class="eyebrow" style="text-transform:none"><input type="checkbox" id="autoscroll" checked> scroll</label>
+        <button id="clear" class="secondary" style="min-height:30px;padding:5px 9px">Wyczyść</button></div>
+      <div class="bd"><div id="log"></div></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<nav class="bottomnav" aria-label="Główna nawigacja">
+  <button class="active" data-page="live">
+    <svg viewBox="0 0 24 24"><path d="M3 12h4l2-5 3 10 2-5h7"/></svg>Live</button>
+  <button data-page="session">
+    <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>Sesja</button>
+  <button data-page="lab">
+    <svg viewBox="0 0 24 24"><path d="M9 3v7L4 20h16l-5-10V3"/><path d="M8 3h8"/></svg>Lab</button>
+</nav>
+
+<div id="settings" class="fuel-modal" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+  <div class="fuel-dialog">
+    <div class="eyebrow">Ustawienia</div>
+    <h2 id="setTitle">Konfiguracja</h2>
+
+    <div class="sh"><span class="n">Transport</span></div>
+    <div class="card"><div class="bd" style="padding-top:11px">
+      <p style="margin:0 0 9px;color:var(--dim);font-size:11px">Token zostaje wyłącznie w tym
+        telefonie i <b style="color:var(--cream)">nigdy nie trafia do dziennika ani do eksportu</b>.</p>
+      <div class="bar">
+        <input id="repoOwner" placeholder="właściciel" style="width:130px">
+        <input id="repoName" placeholder="repozytorium" style="width:130px">
+        <input id="repoBranch" placeholder="gałąź (main)" style="width:110px"></div>
+      <div class="bar"><input id="repoToken" type="password" placeholder="token dostępu" style="flex:1;min-width:170px">
+        <button id="repoSave" class="act">Zapisz</button></div>
+      <div class="bar"><label class="eyebrow" style="text-transform:none;letter-spacing:0">
+        <input type="checkbox" id="repoAuto" checked> wysyłaj automatycznie po zatrzymaniu monitora</label></div>
+      <div class="bar"><label class="eyebrow" style="text-transform:none;letter-spacing:0">
+        <input type="checkbox" id="repoChunks"> dołączaj surowe fragmenty transportu</label></div>
+      <div id="repoCfgStatus"></div>
+    </div></div>
+
+    <div class="sh"><span class="n">Pojazd</span></div>
+    <div class="card"><div class="bd" style="padding-top:11px">
+      <div class="bar"><input id="vinInput" placeholder="VIN — 17 znaków" maxlength="20"
+        style="flex:1;min-width:170px;text-transform:uppercase">
+        <button id="vinSave" class="act">Zapisz</button></div>
+      <div class="bar"><button id="repoVin" class="secondary">Odczytaj VIN z auta</button></div>
+      <div id="vinStatus"></div>
+    </div></div>
+
+    <div class="sh"><span class="n">Diagnostyka aplikacji</span></div>
+    <div class="card"><div class="bd" style="padding-top:11px;font-size:11px;color:var(--dim)"
+      id="diagBox">—</div></div>
+
+    <div class="bar" style="margin-top:14px;border-top:1px solid var(--rule);padding-top:14px">
+      <button id="newSession" class="danger" style="width:100%">Zamknij sesję i zacznij nową</button>
+      <small>Akcja kosztowna — potwierdzenie powie, czy bieżąca sesja jest już bezpieczna.</small>
+    </div>
+    <div class="bar"><button id="closeSettings" class="act" style="width:100%">Zamknij</button></div>
+  </div>
+</div>
+
+<div id="suspicion" class="fuel-modal" role="dialog" aria-modal="true" aria-labelledby="suspTitle">
+  <div class="fuel-dialog">
+    <div class="eyebrow">Wykryto zmianę zasilania</div>
+    <h2 id="suspTitle">Potwierdź paliwo</h2>
+    <p id="suspicionText"></p>
+    <div class="fuel-switch">
+      <button data-fuel-confirm="LPG">Przełączyłem na LPG</button>
+      <button data-fuel-confirm="BENZYNA">Przełączyłem na benzynę</button>
+    </div>
+    <button id="suspNone" class="secondary" style="width:100%">To nie było przełączenie</button>
+    <p style="margin-top:12px">Czujka bywa myląca, dlatego sama niczego nie zmienia. Znacznik
+      dostanie <b style="color:var(--cream)">czas wykrycia</b>, nie kliknięcia.</p>
+  </div>
+</div>
+
+<div id="connectPanel" class="fuel-modal" role="dialog" aria-modal="true" aria-labelledby="connTitle">
+  <div class="fuel-dialog">
+    <div class="eyebrow">Połączenie z autem</div>
+    <h2 id="connTitle">Łączenie</h2>
+    <ol class="kroki" id="connSteps"></ol>
+    <div id="connErr"></div>
+    <div class="sh"><span class="n">Zapamiętane adaptery</span></div>
+    <div id="connSaved"></div>
+    <div class="bar"><button id="connStart" class="act" style="width:100%">Szukaj adaptera</button></div>
+    <div class="bar"><button id="connClose" class="secondary" style="width:100%">Zamknij</button></div>
+  </div>
+</div>
+
+<div id="confirmBox" class="fuel-modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+  <div class="fuel-dialog">
+    <div class="eyebrow" id="confirmEyebrow">Potwierdzenie</div>
+    <h2 id="confirmTitle">Na pewno?</h2>
+    <p id="confirmBody"></p>
+    <div class="bar"><button id="confirmYes" class="danger" style="width:100%">Tak</button></div>
+    <div class="bar"><button id="confirmNo" class="act" style="width:100%">Anuluj</button></div>
+  </div>
+</div>
+
+<div id="fuelPrompt" class="fuel-modal" role="dialog" aria-modal="true" aria-labelledby="fuelQuestion">
+  <div class="fuel-dialog">
+    <div class="eyebrow">Nowa sesja</div>
+    <h2 id="fuelQuestion">Na czym teraz pracuje silnik?</h2>
+    <p>Bez tej odpowiedzi cała sesja ma nieokreślone paliwo, a podział danych per paliwo
+      jest sercem tej diagnostyki.</p>
+    <div class="fuel-switch">
+      <button data-fuel="LPG">LPG</button>
+      <button data-fuel="BENZYNA">Benzyna</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const APP_VERSION="0.16.1";
+/* Muszą być zadeklarowane przed pierwszym użyciem niżej (const nie jest hoistowany). */
+/* MISFIRE_READS: odczytów pod jednym przełączeniem nagłówka. Zmierzone na realnej serii:
+   4 odczyty dają tylko ×1,1 więcej zarejestrowanych wypadów, a wydłużają cykl o ~0,5 s,
+   przez co karty wpadają w STALE. Zostaje 1; stała pozostaje na wypadek szybszego adaptera. */
+const MISFIRE_DID="DAB6", MISFIRE_CYL=6, MISFIRE_READS=1;
+/* Kolejność liczników w DID DAB6 to KOLEJNOŚĆ ZAPŁONU (1-5-3-6-2-4), nie numeracja
+   cylindrów. Pozycja 6 = fizyczny CYLINDER 4 — udowodnione porównaniem przyrostów w tym
+   samym oknie czasowym. Potwierdzone dwukrotnie:
+     06.08 11:53-14:50 — tryb 06 cylinder 4 +38, DAB6 pozycja 6 +36, reszta bez wzrostu;
+     06.08 15:36-15:40 — dwa odczyty licznika bieżącego cyklu, przyrost CYL/poz:
+       1/+9 wobec poz.1/+8 · 2/+3 wobec poz.5/+2 · 3/+1 = poz.3/+1
+       4/+4 = poz.6/+4 · 5/0 = poz.2/0 · 6/0 = poz.4/0
+     — cztery pozycje zgodne co do jednego zdarzenia, dwie różnią się o 1 (okno próbkowania
+     DAB6 jest o kilkanaście sekund węższe od okna trybu 06).
+   Identyfikatory sygnałów zostają bez zmian, żeby nie unieważnić 20 wcześniejszych sesji —
+   zmieniamy wyłącznie to, co widać na ekranie i co trafia do nagłówka. */
+const DAB6_NA_CYLINDER=[1,5,3,6,2,4];
+const MISFIRE_MAPA={kolejnosc:"zaplonu 1-5-3-6-2-4",pozycje:DAB6_NA_CYLINDER,
+  dowod:"tryb 06 MID A5 +38 wobec DAB6 poz.6 +36 w oknie 2026-08-06 11:53-14:50",
+  pewnosc:"wszystkie sześć pozycji potwierdzone przyrostami w tym samym oknie (06.08 15:36-15:40)"};
+function etykietaWypadu(poz){return "Wypady CYL "+DAB6_NA_CYLINDER[poz-1]+" (poz."+poz+")"}
+const DB_NAME="xc70_obd_v060";
+/* POLL_TIMEOUT: przy zajetej magistrali grupy trybu 01 nie zamykaja sie same (ELM skleja PID-y,
+   wiec sygnatury nie wystepuja doslownie) i zawsze wypalaja pelny limit. Zmierzone na sesji 31.07:
+   limit 800 ms wyluskuje DOKLADNIE te same PID-y co 1900 ms (792 sztuki, co do jednego).
+   Ustawione 1000 ms — zapas wzgledem pomiaru, a i tak polowa dotychczasowego czekania. */
+const CHUNK_SIZE=20, DEFAULT_TIMEOUT=3500, POLL_TIMEOUT=1000, DRAIN_QUIET_MS=350, DRAIN_MAX_MS=1800;
+/* Po wczesnym zamknięciu adapter jeszcze nadaje ogon i prompt. Zmierzone na aucie: kolejna
+   komenda po 5 ms konczy sie STOPPED (58/58), po ~100 ms dziala (4/4). Stad okno wyciszenia. */
+const SETTLE_QUIET_MS=60, SETTLE_MAX_MS=200;
+/* Odstep miedzy zapytaniami. Bylo 180 ms przy dwoch duzych grupach; przy dziewieciu krotkich
+   zapytaniach na cykl dawaloby 1,6 s samego czekania. Car Scanner utrzymuje kadencje rzedu
+   kilkudziesieciu zapytan na sekunde, wiec 40 ms jest i tak zachowawcze. */
+const REQUEST_GAP_MS=40;
+/* DID_POLL_TIMEOUT: udane odczyty 22DAB6 maja mediane 66 ms, p95 75 ms, maksimum 120 ms
+   (sesja 31.07, 64 udane). Odpowiedz albo przychodzi od razu, albo wcale — dluzszy limit
+   NIE zwieksza skutecznosci (zmierzone: 4000 ms dalo 50%, tyle samo co 1900 ms), a marnuje
+   sekundy na kazdej nieudanej probie. 600 ms = piecikrotny zapas nad maksimum. */
+const DID_POLL_TIMEOUT=600;
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const enc=new TextEncoder(), dec=new TextDecoder();
+const logEl=$("#log"), cardsEl=$("#cards"), verdictEl=$("#verdict");
+const appT0=performance.now(), mono=()=>performance.now()-appT0, wall=()=>new Date().toISOString();
+const uuid=()=>crypto.randomUUID?crypto.randomUUID():"sess-"+Date.now()+"-"+Math.random().toString(16).slice(2);
+
+let device=null,server=null,writeChar=null,notifyChar=null,connected=false,monitoring=false,autoRunning=false,exporting=false;
+let adapterProfile="unknown",serviceUuid=null,sessionId=null,sessionStartedWall=null,sessionStartedMono=0,seq=0;
+let queue=[],inflight=null,rxBuffer="",responseTimer=null,drain=null,settle=null;
+/* Nasłuch to strumień, nie wymiana zadanie-odpowiedz, wiec nie da sie go opisac kolejka. */
+let listening=false,listenBuf="";
+let adapterState={protocol:null,header:null,receiver:null,caf:null,headers:null};
+let fuelState=null, lastSignals=new Map(), sessionSampleCount=0, sessionExchangeCount=0, counters={timeouts:0,late:0,orphan:0,mismatch:0,bufferFull:0,rejected:0,salvaged:0,busTraffic:0,writeFail:0};
+/* Liczniki ECU dla wypadów są kroczące i zerują się, więc sumujemy dodatnie przyrosty w obrębie sesji. */
+let misfirePrev=null, misfireTotals=new Array(MISFIRE_CYL).fill(0);
+
+const DID_DEFS={
+  "ECM:D91C":{signal_id:"powertrain.engine.speed.enhanced",name:"RPM enhanced",codec:"float32_be",unit:"rpm",confidence:"confirmed_vehicle",min:0,max:8000},
+  "ECM:D9C1":{signal_id:"powertrain.fuel.rail_pressure.enhanced",name:"Rail enhanced",codec:"float32_be",unit:"kPa",confidence:"confirmed_vehicle",min:0,max:30000},
+  /* Wypady zapłonów per cylinder: 12 B = 6 × uint16 BE (format potwierdzony na 16,5 tys.
+     odczytów z logu Car Scanner). Kolejność słów to KOLEJNOŚĆ ZAPŁONU 1-5-3-6-2-4, nie
+     numeracja cylindrów — udowodnione trybem 06 (06.08: MID A5/cyl 4 +38 wobec poz.6 +36,
+     pozostałe cylindry bez wzrostu). Wcześniejsze założenie "słowo0..5 = CYL1..6" było błędne. */
+  "ECM:DAB6":{signal_id:"powertrain.misfire.percyl",name:"Wypady per cylinder",codec:"misfire6_u16be",unit:"wypady",confidence:"confirmed_order_firing",min:0,max:65535}
+};
+const CANDIDATES=[
+  {ecu:"ECM",did:"D9DC",name:"Oil temp"},{ecu:"ECM",did:"D9F9",name:"Exhaust T2"},
+  {ecu:"ECM",did:"D916",name:"Air flow"},{ecu:"ECM",did:"D99C",name:"Fuel temp"},
+  {ecu:"ECM",did:"DC02",name:"Fan"},{ecu:"ECM",did:"D900",name:"A/C pressure"},
+  {ecu:"TCM",did:"DD8D",name:"Engine torque"},{ecu:"TCM",did:"DD81",name:"Gear"}
+];
+const ENDPOINTS={ECM:{request:"7E0",response:"7E8"},TCM:{request:"7E1",response:"7E9"}};
+const PID_LEN={"01":4,"03":2,"04":1,"05":1,"06":1,"07":1,"0A":1,"0B":1,"0C":2,"0D":1,"0E":1,"0F":1,"10":2,"11":1,"13":1,"15":2,"1C":1,"1F":2,"20":4,"21":2,"22":2,"23":2,"24":4,"2F":1,"30":1,"31":2,"33":1,"34":4,"3C":2,"40":4,"41":4,"42":2,"43":2,"44":2,"45":1,"46":1,"47":1,"49":1,"4A":1,"4C":1,"51":1,"55":1,"56":1};
+const MONITOR_PIDS=new Set(Object.keys(PID_LEN));
+
+/* Bezpieczeństwo: każda komenda, także wywołana z kodu, przechodzi przez allowlistę. */
+function commandPolicy(raw){
+  const cmd=String(raw||"").trim().toUpperCase().replace(/\s+/g," ");
+  const compact=cmd.replace(/\s/g,"");
+  /* Profil skopiowany z Car Scannera, ktory na TYM aucie osiaga 97,5% skutecznosci.
+   ATST krotki limit adaptera, ATAT1 timing adaptacyjny, ATH1 naglowki (bez nich nie wiadomo
+   czyja jest ramka), ATFCS* wlasne sterowanie przeplywem dla ramek wieloczesciowych,
+   ATAL dlugie komunikaty. Adresy 7xx sa potrzebne do modulow innych niz silnik. */
+const atAllowed=[/^ATZ$/,/^ATI$/,/^AT@1$/,/^ATE[01]$/,/^ATL[01]$/,/^ATS[01]$/,/^ATH[01]$/,/^ATCAF[01]$/,/^ATSP[06]$/,/^ATDP$/,/^ATDPN$/,/^ATAL$/,/^ATAT[0-2]$/,/^ATST [0-9A-F]{2}$/,/^ATFCSH 7[0-9A-F]{2}$/,/^ATFCSD [0-9A-F]{6}$/,/^ATFCSM [0-2]$/,/^ATCRA(?: 7[0-9A-F]{2})?$/,/^ATSH 7[0-9A-F]{2}$/,/^ATMA$/];
+  if(cmd.startsWith("AT")) return {allowed:atAllowed.some(r=>r.test(cmd)),cmd,kind:"AT"};
+  /* 0900 to mapa obsługiwanych pozycji trybu 09 — czysty odczyt, a pozwala odróżnić
+     „sterownik nie zna VIN-u" od „sterownik w ogóle nie odpowiada". */
+  if(["03","06","07","0900","0902","0904","0906","0908","090A","090B","3E","3E00"].includes(compact)) return {allowed:true,cmd:compact,kind:"OBD"};
+  /* Tryb 06 wymaga numeru monitora: samo „06" sterownik odrzuca (7F 06 12 — zmierzone). */
+  if(/^06[0-9A-F]{2}$/.test(compact)) return {allowed:true,cmd:compact,kind:"OBD"};
+  if(/^01(?:[0-9A-F]{2})+$/.test(compact)){
+    const pids=compact.slice(2).match(/../g)||[];
+    return {allowed:pids.length>0&&pids.every(p=>MONITOR_PIDS.has(p)||["00","20","40","60"].includes(p)),cmd:compact,kind:"OBD"};
+  }
+  /* Tryb 02 = ramka zamrożona: zdjęcie warunków z chwili zapisania kodu. Czysty odczyt. */
+  if(/^02[0-9A-F]{2}([0-9A-F]{2})?$/.test(compact)) return {allowed:true,cmd:compact,kind:"OBD"};
+  if(/^22[0-9A-F]{4}$/.test(compact)&&["7E0","7E1"].includes(adapterState.header)) return {allowed:true,cmd:compact,kind:"UDS"};
+  return {allowed:false,cmd,kind:"REJECTED"};
+}
+
+/* IndexedDB: surowe fragmenty, pełne wymiany, próbki i zdarzenia. */
+let db=null,pendingWrites=new Set();
+function dbOpen(){return new Promise(resolve=>{try{
+  const req=indexedDB.open(DB_NAME,7);
+  req.onupgradeneeded=e=>{const d=e.target.result;for(const name of ["chunk","exchange","sample","event","frame","service","freeze","discovery"]){if(!d.objectStoreNames.contains(name)){const s=d.createObjectStore(name,{autoIncrement:true});s.createIndex("session","session",{unique:false});}}
+  /* Dziennik sesji: jedna, wielokrotnie nadpisywana linijka na pomiar. Po odświeżeniu
+     przeglądarki to jedyny ślad mówiący, że w pamięci telefonu leży pomiar, którego nikt
+     nie wysłał — same dane leżą tam od zawsze, tylko nikt o nie nie pytał. */
+  if(!d.objectStoreNames.contains("sessions"))d.createObjectStore("sessions",{keyPath:"id"});};
+  req.onsuccess=e=>{db=e.target.result;resolve(true)};req.onerror=()=>resolve(false);
+}catch(_){resolve(false)}})}
+/* Cichy brak zapisu to najgorszy tryb awarii: apka dziala, a dane znikaja. Zgloszenie tylko
+   przy pierwszym bledzie — event() sam pisze do bazy, wiec kolejne wywolanie nie moze sie zapetlic. */
+function noteWriteFailure(store){counters.writeFail++;if(counters.writeFail===1)event("ERROR","ZAPIS_NIEUDANY",{store,uwaga:"pamiec przegladarki moze byc pelna; czesc danych tej sesji nie zostanie zapisana"})}
+function dbPut(store,obj){if(!db)return Promise.resolve(false);let finish;const promise=new Promise(r=>finish=r);pendingWrites.add(promise);try{const tx=db.transaction(store,"readwrite");tx.oncomplete=()=>finish(true);tx.onerror=tx.onabort=()=>{noteWriteFailure(store);finish(false)};tx.objectStore(store).add(obj)}catch(_){noteWriteFailure(store);finish(false)}promise.finally(()=>pendingWrites.delete(promise));return promise}
+async function flushWrites(maxMs=5000){const end=performance.now()+maxMs;while(pendingWrites.size&&performance.now()<end)await Promise.allSettled([...pendingWrites]);return pendingWrites.size===0}
+/* Zapis nadpisujący — dla dziennika sesji, gdzie ta sama linijka jest aktualizowana. */
+function dbSave(store,obj){return new Promise(resolve=>{if(!db)return resolve(false);try{const tx=db.transaction(store,"readwrite");tx.oncomplete=()=>resolve(true);tx.onerror=tx.onabort=()=>resolve(false);tx.objectStore(store).put(obj)}catch(_){resolve(false)}})}
+function dbAllFor(store,sid){return new Promise(resolve=>{if(!db)return resolve([]);try{const req=db.transaction(store,"readonly").objectStore(store).index("session").getAll(IDBKeyRange.only(sid));req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>resolve([])}catch(_){resolve([])}})}
+function dbAll(store){return dbAllFor(store,sessionId)}
+function dbCountFor(store,sid){return new Promise(resolve=>{if(!db)return resolve(0);try{const req=db.transaction(store,"readonly").objectStore(store).index("session").count(IDBKeyRange.only(sid));req.onsuccess=()=>resolve(req.result||0);req.onerror=()=>resolve(0)}catch(_){resolve(0)}})}
+/* Same identyfikatory sesji, bez wczytywania rekordów — kursor „nextunique" przeskakuje
+   po jednym kluczu na wartość, więc przejrzenie 30 MB kosztuje tyle, ile jest sesji. */
+function distinctSessions(store){return new Promise(resolve=>{if(!db)return resolve([]);const out=[];try{const req=db.transaction(store,"readonly").objectStore(store).index("session").openKeyCursor(null,"nextunique");req.onsuccess=e=>{const c=e.target.result;if(!c)return resolve(out);if(c.key!=null)out.push(String(c.key));c.continue()};req.onerror=()=>resolve(out)}catch(_){resolve(out)}})}
+/* Kasujemy rekordy JEDNEJ sesji i wyłącznie po potwierdzonej wysyłce (HTTP 2xx).
+   Książki serwisowej („service") nie ruszamy nigdy — nie jest częścią pomiaru. */
+const DATA_STORES=["chunk","exchange","sample","event","frame","freeze","discovery"];
+function dbDropSession(store,sid){return new Promise(resolve=>{if(!db)return resolve(0);let n=0;try{const tx=db.transaction(store,"readwrite");const req=tx.objectStore(store).index("session").openKeyCursor(IDBKeyRange.only(sid));req.onsuccess=e=>{const c=e.target.result;if(!c)return;tx.objectStore(store).delete(c.primaryKey);n++;c.continue()};tx.oncomplete=()=>resolve(n);tx.onerror=tx.onabort=()=>resolve(n)}catch(_){resolve(0)}})}
+
+function stamp(){const d=new Date();return d.toLocaleTimeString("pl-PL",{hour12:false})+"."+String(d.getMilliseconds()).padStart(3,"0")}
+function view(kind,text){const row=document.createElement("div");row.className="line "+kind;row.innerHTML='<span class="time"></span> <span class="body"></span>';row.querySelector(".time").textContent=stamp();row.querySelector(".body").textContent=text;logEl.appendChild(row);while(logEl.childElementCount>600)logEl.firstChild.remove();if($("#autoscroll").checked)logEl.scrollTop=logEl.scrollHeight}
+function event(level,text,extra={}){view(level==="ERROR"?"err":"sys",text);dbPut("event",{session:sessionId,seq:++seq,ts_mono:mono(),ts_wall:wall(),level,text,...extra})}
+function logChunk(direction,bytes,text,exchangeId){dbPut("chunk",{session:sessionId,seq:++seq,ts_mono:mono(),ts_wall:wall(),direction,transport:"ble",exchange_id:exchangeId??null,bytes_hex:[...bytes].map(x=>x.toString(16).padStart(2,"0")).join(" "),text});view(direction.toLowerCase(),direction+" "+text.replace(/\r/g,"↵"))}
+function logExchange(ex){sessionExchangeCount++;dbPut("exchange",{session:sessionId,seq:++seq,exchange_id:ex.id,ts_mono_start:ex.started,ts_mono_end:mono(),ts_wall:wall(),command:ex.cmd,kind:ex.kind,endpoint:ex.endpoint||null,response_text:ex.text||"",response_hex:textBytes(ex.text||""),status:ex.status,correlation:ex.correlation||null,attempt:ex.attempt||1,adapter_state:{...adapterState}})}
+function textBytes(s){return[...enc.encode(s)].map(x=>x.toString(16).padStart(2,"0")).join(" ")}
+
+function setStatus(text,kind=""){const el=$("#status");el.textContent=text;el.className="status "+kind}
+/* Sześć stanów magistrali, każdy z własną treścią i własnym przyciskiem. Stan wstrzymany
+   NIE wraca sam po teście — zostaje z widocznym „Wznów monitor", bo to jedyny stan,
+   w którym bezczynność kosztuje utracone dane. */
+function setBus(){
+  const bt=$("#busText"),mt=$("#monitorToggle"),mn=$("#main");
+  if(!bt)return;
+  let tryb="idle",txt="",mtTxt="Start monitora",mtOn=true,mnOn=false;
+  if(!connected){tryb="off";txt="brak połączenia z autem";mtOn=false;mnOn=true}
+  else if(autoRunning){tryb="link";txt="sprawdzam sterownik…";mtOn=false}
+  else if(monitoring){tryb="run";
+    const el=sessionStartedMono?Math.max(0,mono()-sessionStartedMono):0;
+    txt="<b>"+String(Math.floor(el/60000)).padStart(2,"0")+":"+
+      String(Math.floor(el/1000)%60).padStart(2,"0")+"</b> · "+
+      sessionSampleCount.toLocaleString("pl-PL")+" próbek";
+    mtTxt="Stop"}
+  else if(holdAutoPush){tryb="paused";txt="wstrzymany — <b>wznów</b>";
+    mtTxt="Wznów monitor"}
+  else if(listening){tryb="link";txt="nasłuch magistrali…";mtOn=false}
+  else if(counters.timeouts>0&&sessionExchangeCount>20&&counters.timeouts*100/sessionExchangeCount>50){
+    tryb="err";txt="sterownik milczy — zapłon?";mtTxt="Ponów"}
+  else {tryb="idle";txt="magistrala bezczynna"}
+  document.body.dataset.bus=tryb;
+  bt.innerHTML=txt;
+  if(mn)mn.hidden=!mnOn;
+  if(mt){mt.hidden=mnOn;mt.textContent=mtTxt;
+    mt.disabled=!mtOn||(!monitoring&&(autoRunning||!!inflight||queue.length>0||!!drain||!!settle))}
+}
+/* Kolejność bloków na Live odpowiada kolejności czynności: przed połączeniem widać JEDEN
+   przycisk, nie trzy bloki z pustymi siatkami. */
+function refresh(){
+  const busy=autoRunning||monitoring||listening||!!inflight||queue.length>0||!!drain||!!settle;
+  const mn=$("#main");if(mn)mn.textContent=connected?"Rozłącz":"Połącz";
+  /* Czynności, które same zwalniają magistralę przez freeBus(), NIE mogą być wygaszone
+     dlatego, że monitor pracuje — inaczej freeBus() nigdy nie dostaje szansy, a użytkownik
+     widzi martwy przycisk (zgłoszone 07.08: „nie działał odczyt cylindrów"). */
+  const zajeteInaczej=!connected||autoRunning||listening||pressRunning||!!inflight||queue.length>0||!!drain||!!settle;
+  for(const id of ["#readFuelType","#readFreeze","#readMon","#pressTest","#readDid"]){
+    const el=$(id);if(el)el.disabled=monitoring?!connected||autoRunning||listening||pressRunning:zajeteInaczej}
+  for(const id of ["#listen","#scanModules","#discRun","#repoVin"]){
+    const el=$(id);if(el)el.disabled=!connected||busy}
+  $("#newSession").disabled=busy;
+  $("#export").disabled=autoRunning||exporting;
+  const cb=$("#connectBox");if(cb)cb.hidden=connected;
+  $("#driveHeadline").textContent=connected?"Połączono":"Gotowy do odczytu";
+  $("#driveSubline").textContent=connected
+    ?"Uruchom monitor albo przejdź do Lab."
+    :"Wepnij adapter do gniazda OBD, włącz zapłon i połącz. Aplikacja sprawdzi sterownik i uruchomi bezpieczny monitoring.";
+  setBus();
+  updateSessionUi();
+}
+
+/* Klasyfikacja i korelacja są osobnymi etapami. Regex nie nadaje już werdyktu danych. */
+const NRC={"10":"generalReject","11":"serviceNotSupported","12":"subFunctionNotSupported","13":"incorrectLength","22":"conditionsNotCorrect","31":"requestOutOfRange","33":"securityAccessDenied","78":"responsePending"};
+function cleanHex(text){return (text||"").toUpperCase().split(/[\r\n>]+/).map(x=>x.trim()).filter(Boolean).filter(x=>!/^SEARCHING/.test(x)&&!/^BUS INIT/.test(x)).join(" ").replace(/[^0-9A-F]/g,"")}
+function classify(text){const u=(text||"").toUpperCase();if(u.includes("BUFFER FULL")){counters.bufferFull++;return{status:"BUFFER_FULL"}}if(u.includes("NO DATA"))return{status:"NO_DATA"};if(u.includes("UNABLE TO CONNECT"))return{status:"NO_CONNECT"};if(u.includes("CAN ERROR")||u.includes("BUS ERROR")||u.includes("RX ERROR"))return{status:"BUS_ERROR"};if(u.includes("STOPPED"))return{status:"STOPPED"};if(u.includes("?"))return{status:"AT_UNSUPPORTED"};const h=cleanHex(text),m=h.match(/7F([0-9A-F]{2})([0-9A-F]{2})/);if(m)return{status:"NEGATIVE_RESPONSE",service:m[1],nrc:m[2],nrcName:NRC[m[2]]||"unknown"};if(u.includes("ERROR"))return{status:"ERROR"};return{status:"RESPONSE"}}
+/* ELM z CAF1 poprzedza odpowiedź wieloramkową łączną długością (np. "00F") i łamie dane
+   na linie "0:", "1:". Sama sygnatura 62xxxx jest już w pierwszej ramce, więc nie wolno
+   na niej kończyć — inaczej payload zostaje ucięty. */
+function declaredLength(text){const m=(text||"").toUpperCase().match(/(?:^|[\r\n])\s*([0-9A-F]{3})\s*(?:[\r\n]|$)/);return m?parseInt(m[1],16):null}
+function dataByteCount(text){return ((text||"").toUpperCase().replace(/[>\r\n]/g," ").split(/\s+/).filter(t=>/^[0-9A-F]{2}$/.test(t))).length}
+function responseComplete(text,exp){
+  const hx=cleanHex(text),pos=exp.positive||[];
+  if(!pos.length||!pos.every(s=>hx.includes(s)))return false;
+  /* Sama sygnatura nie wystarcza przy wieloramkowej odpowiedzi — 62xxxx jest już w pierwszej
+     ramce. Gdy ISO-TP podał długość, czekamy na komplet bajtów.
+     Świadomie NIE zamykamy na samej długości: w buforze bywają resztki poprzedniej
+     odpowiedzi, które domknęłyby licznik przed nadejściem właściwej ramki (mierzone:
+     traciło to 29/29 odczytów lambdy). Wolniej, ale kompletnie. */
+  const need=declaredLength(text);
+  return need==null?true:dataByteCount(text)>=need;
+}
+function expectation(cmd){const c=cmd.replace(/\s/g,"");if(c.startsWith("AT"))return{kind:"AT"};if(c==="03")return{kind:"OBD",positive:["43"]};if(c.startsWith("06"))return{kind:"OBD",positive:["46"],negativeService:"06"};if(c==="07")return{kind:"OBD",positive:["47"]};if(c.startsWith("09"))return{kind:"OBD",positive:["49"+c.slice(2,4)],negativeService:"09"};if(c.startsWith("02"))return{kind:"OBD",positive:["42"+c.slice(2,4)],negativeService:"02"};if(c.startsWith("01"))return{kind:"OBD",positive:(c.slice(2).match(/../g)||[]).map(p=>"41"+p)};if(c.startsWith("22"))return{kind:"UDS",positive:["62"+c.slice(2,6)],negativeService:"22"};return{kind:"UNKNOWN",positive:[]}}
+function correlate(cmd,text,meta){const exp=expectation(cmd);if(exp.kind==="AT")return{pass:["RESPONSE","AT_UNSUPPORTED"].includes(meta.status),reason:"adapter_command"};const h=cleanHex(text);if(meta.status==="NEGATIVE_RESPONSE")return{pass:meta.service===exp.negativeService||exp.kind==="OBD",reason:"negative_response",nrc:meta.nrc};const hits=(exp.positive||[]).filter(x=>h.includes(x));return{pass:hits.length>0,reason:hits.length?"positive_signature":"signature_missing",expected:exp.positive,observed:h.slice(0,160)}}
+
+function enqueue(raw,timeoutMs=DEFAULT_TIMEOUT,options={}){return new Promise(resolve=>{const policy=commandPolicy(raw);if(!policy.allowed){counters.rejected++;event("ERROR","COMMAND_REJECTED: "+policy.cmd,{reason:"read_only_allowlist"});resolve({cmd:policy.cmd,status:"COMMAND_REJECTED",text:"",correlation:{pass:false,reason:"policy"}});return}if(!writeChar){resolve({cmd:policy.cmd,status:"DISCONNECTED",text:""});return}queue.push({cmd:policy.cmd,kind:policy.kind,timeoutMs,resolve,endpoint:options.endpoint||null,attempt:options.attempt||1});pump();refresh()})}
+async function pump(){if(inflight||drain||settle||listening||!queue.length||!writeChar)return;const ex=queue.shift();inflight=ex;ex.id=++seq;ex.started=mono();rxBuffer="";/* Filtr ATCRA mowi, czyich ramek oczekujemy — po tym odrozniamy odpowiedz dla nas od cudzej. */ex.expectId=(ex.kind==="AT")?null:(adapterState.receiver||null);updateRequestedState(ex.cmd);try{await writeBytes(ex.cmd+"\r",ex.id);view("tx","TX "+ex.cmd);responseTimer=setTimeout(()=>timeoutExchange(ex),ex.timeoutMs)}catch(err){finishExchange(ex,"WRITE_ERROR",String(err.message||err),{pass:false,reason:"write_error"})}refresh()}
+function timeoutExchange(ex){if(inflight!==ex)return;responseTimer=null;inflight=null;const full=rxBuffer;rxBuffer="";const meta=classify(full),corr=correlate(ex.cmd,full,meta);
+  /* SALVAGE: na tym adapterze dane strumieniują się bez promptu '>'. Jeśli oczekiwana sygnatura jest w buforze, to poprawna odpowiedź — nie wyrzucaj jej. */
+  if(corr.pass&&ex.kind!=="AT"){counters.salvaged++;view("rx","SALVAGE "+ex.cmd);finishExchange(ex,"RESPONSE",full,{...corr,salvaged:true},meta);return}
+  counters.timeouts++;ex.text=full;ex.status="TIMEOUT";ex.correlation={pass:false,reason:"timeout"};logExchange(ex);view("err","TIMEOUT "+ex.cmd);ex.resolve(publicResult(ex));startDrain(ex.id);refresh()}
+/* Okno wyciszenia po wczesnym zamknięciu: pochłania ogon i prompt adaptera, po czym
+   dopuszcza kolejną komendę. Ogon jest spodziewany, więc NIE liczymy go jako late/orphan. */
+function startSettle(){
+  if(settle)return;
+  let quiet,max;
+  const done=()=>{if(!settle)return;clearTimeout(quiet);clearTimeout(max);settle=null;pump();refresh()};
+  settle={text:"",touch(){clearTimeout(quiet);quiet=setTimeout(done,SETTLE_QUIET_MS)}};
+  max=setTimeout(done,SETTLE_MAX_MS);
+  settle.touch();
+}
+function startDrain(previousExchangeId){let quietTimer,maxTimer;const finish=reason=>{if(!drain)return;clearTimeout(quietTimer);clearTimeout(maxTimer);const d=drain;drain=null;if(d.text){counters.late++;event("ERROR","LATE_RESPONSE po exchange "+previousExchangeId,{reason,raw_text:d.text})}pump();refresh()};drain={previousExchangeId,text:"",touch(){clearTimeout(quietTimer);quietTimer=setTimeout(()=>finish("quiet_gap"),DRAIN_QUIET_MS)}};maxTimer=setTimeout(()=>finish("max_deadline"),DRAIN_MAX_MS);drain.touch()}
+function finishExchange(ex,status,text,correlation,meta=null){if(responseTimer)clearTimeout(responseTimer);responseTimer=null;if(inflight===ex)inflight=null;ex.status=status;ex.text=text;ex.correlation=correlation;ex.meta=meta;logExchange(ex);const mark=correlation&&correlation.pass?"PASS":"REJECT";view(correlation&&correlation.pass?"rx":"err",`${mark} ${ex.cmd} [${status}] ${text.replace(/[\r>]/g," ").trim()}`);ex.resolve(publicResult(ex));refresh();if(correlation&&correlation.early)startSettle();else pump()}
+function publicResult(ex){return{cmd:ex.cmd,text:ex.text||"",status:ex.status,meta:ex.meta||classify(ex.text||""),correlation:ex.correlation||{pass:false},exchangeId:ex.id,endpoint:ex.endpoint}}
+function onNotify(ev){
+  const dv=ev.target.value,bytes=new Uint8Array(dv.buffer,dv.byteOffset,dv.byteLength),text=dec.decode(bytes);
+  logChunk("RX",bytes,text,inflight?inflight.id:(drain?drain.previousExchangeId:null));
+  if(listening){listenBuf+=text;return}
+  if(drain){drain.text+=text;drain.touch();if(drain.text.includes(">")){const d=drain;drain=null;counters.late++;
+    event("ERROR","LATE_RESPONSE odizolowana",{previous_exchange_id:d.previousExchangeId,raw_text:d.text});pump();refresh()}return}
+  if(settle){settle.text+=text;settle.touch();return}
+  if(!inflight){counters.busTraffic++;
+    if(counters.busTraffic<=3)event("INFO","RUCH_OBCY_NA_MAGISTRALI",{raw_text:text,uwaga:"ramka nie jest odpowiedzią na nasze zapytanie"});
+    return}
+  rxBuffer+=text;
+  /* Komendy adaptera odpowiadają tekstem — kończy je znak zachęty. */
+  if(inflight.kind==="AT"){
+    if(!rxBuffer.includes(">"))return;
+    const ex=inflight,full=rxBuffer;rxBuffer="";
+    const meta=classify(full);
+    finishExchange(ex,meta.status,full,{pass:["RESPONSE","AT_UNSUPPORTED"].includes(meta.status),reason:"adapter_command"},meta);
+    return;
+  }
+  /* Dane: przetwarzamy pełne linie, resztę zostawiamy w buforze na kolejny fragment. */
+  const nl=rxBuffer.lastIndexOf("\r");
+  const ready=nl>=0?rxBuffer.slice(0,nl):"";
+  const kept=nl>=0?rxBuffer.slice(nl+1):rxBuffer;
+  if(ready){
+    for(const line of ready.split(/[\r\n]+/)){
+      const fr=parseCanLine(line);
+      if(!fr)continue;
+      if(inflight.expectId&&fr.id!==inflight.expectId){counters.busTraffic++;continue}
+      const msg=feedIsoTp(fr.id,fr.bytes);
+      if(!msg)continue;
+      if(messageMatches(inflight.cmd,msg.data)){
+        const ex=inflight;rxBuffer="";
+        ex.data=msg.data;
+        finishExchange(ex,"RESPONSE",hexOf(msg.data),{pass:true,reason:"frame_match",responder:msg.id},{status:"RESPONSE"});
+        return;
+      }
+      if(isNegativeFor(inflight.cmd,msg.data)){
+        const ex=inflight;rxBuffer="";
+        const nrc=msg.data[2].toString(16).toUpperCase().padStart(2,"0");
+        finishExchange(ex,"NEGATIVE_RESPONSE",hexOf(msg.data),{pass:true,reason:"negative_response",nrc},
+          {status:"NEGATIVE_RESPONSE",service:msg.data[1].toString(16).toUpperCase().padStart(2,"0"),nrc,nrcName:NRC[nrc]||"unknown"});
+        return;
+      }
+      counters.busTraffic++;   /* poprawna ramka, ale odpowiedź na cudze pytanie */
+    }
+  }
+  rxBuffer=kept;
+  /* Komunikaty tekstowe adaptera w torze danych (NO DATA, STOPPED, CAN ERROR). */
+  if(/NO DATA|STOPPED|CAN ERROR|BUS |BUFFER FULL|UNABLE|\?/i.test(rxBuffer)&&rxBuffer.includes(">")){
+    const ex=inflight,full=rxBuffer;rxBuffer="";
+    const meta=classify(full);
+    finishExchange(ex,meta.status,full,{pass:false,reason:"adapter_message"},meta);
+  }
+}
+async function writeBytes(text,exchangeId){const bytes=enc.encode(text);for(let i=0;i<bytes.length;i+=CHUNK_SIZE){const part=bytes.slice(i,i+CHUNK_SIZE);logChunk("TX",part,dec.decode(part),exchangeId);if(writeChar.properties.writeWithoutResponse)await writeChar.writeValueWithoutResponse(part);else await writeChar.writeValue(part)}}
+function updateRequestedState(cmd){const c=cmd.toUpperCase();if(c.startsWith("ATSP"))adapterState.protocol=c.slice(4);else if(c.startsWith("ATSH"))adapterState.header=c.slice(5).trim();else if(c.startsWith("ATCRA"))adapterState.receiver=c.slice(5).trim()||null;else if(c.startsWith("ATCAF"))adapterState.caf=c.slice(5);else if(c.startsWith("ATH"))adapterState.headers=c.slice(3)}
+
+const PROFILES=[
+  {name:"IOS-Vlink / vLinker",service:"e7810a71-73ae-499d-8c15-faa9aef0c3f2",auto:true},
+  {name:"FFF0",service:"0000fff0-0000-1000-8000-00805f9b34fb",write:"0000fff2-0000-1000-8000-00805f9b34fb",notify:"0000fff1-0000-1000-8000-00805f9b34fb"},
+  {name:"FFE0",service:"0000ffe0-0000-1000-8000-00805f9b34fb",write:"0000ffe1-0000-1000-8000-00805f9b34fb",notify:"0000ffe1-0000-1000-8000-00805f9b34fb"}
+];
+async function findCharacteristics(gatt){const services=await gatt.getPrimaryServices();for(const p of PROFILES){const svc=services.find(x=>x.uuid===p.service);if(!svc)continue;try{if(p.auto){const chars=await svc.getCharacteristics(),w=chars.find(c=>c.properties.write||c.properties.writeWithoutResponse),n=chars.find(c=>c.properties.notify||c.properties.indicate);if(w&&n)return{w,n,svc,profile:p.name}}else return{w:await svc.getCharacteristic(p.write),n:await svc.getCharacteristic(p.notify),svc,profile:p.name}}catch(_){}}return null}
+/* ═══════════ PANEL POŁĄCZENIA ═══════════
+   Kręcące się kółko nie mówi nic. Lista kroków mówi, na czym stanęło — a to jest różnica
+   między „nie działa" a „adapter odpowiada, ECM nie; włącz zapłon". */
+const KROKI=[
+  {id:"bt",   t:"Bluetooth dostępny"},
+  {id:"dev",  t:"Adapter wybrany"},
+  {id:"gatt", t:"Połączenie GATT"},
+  {id:"chr",  t:"Serwis write + notify"},
+  {id:"elm",  t:"Uzgodnienie ELM327"},
+  {id:"proto",t:"Wykrywanie protokołu"},
+  {id:"vin",  t:"Odczyt VIN"}
+];
+const IKONA={wait:"·",run:"◐",ok:"✓",err:"✗"};
+let krokStan={};
+function krokReset(){krokStan={};KROKI.forEach(k=>krokStan[k.id]={k:"wait"});rysujKroki()}
+function krok(id,stan,detal){
+  if(!krokStan[id])krokStan[id]={};
+  krokStan[id]={k:stan,d:detal||null};
+  rysujKroki();
+}
+function rysujKroki(){
+  const el=$("#connSteps"); if(!el)return;
+  el.innerHTML=KROKI.map(k=>{
+    const s=krokStan[k.id]||{k:"wait"};
+    return '<li data-k="'+s.k+'"><span class="ico">'+(IKONA[s.k]||"·")+'</span>'+
+      '<span>'+k.t+(s.d?'<span class="det">'+s.d+'</span>':'')+'</span></li>';
+  }).join("");
+}
+function krokBlad(id,powod,dzialanie){
+  krok(id,"err",powod);
+  const e=$("#connErr");
+  if(e)e.innerHTML='<div class="v FAIL"><b>'+powod+'</b>'+(dzialanie?'<br>'+dzialanie:'')+'</div>';
+  const t=$("#connTitle"); if(t)t.textContent="Nie udało się";
+}
+
+/* Zapamiętane adaptery. Web Bluetooth i tak pokaże listę systemową przy pierwszym parowaniu,
+   ale getDevices() (gdy przeglądarka je udostępnia) pozwala połączyć się z wcześniej
+   dopuszczonym urządzeniem BEZ okna wyboru. Gdy tej metody nie ma — po prostu podpowiadamy
+   nazwę, żeby użytkownik wiedział, którą pozycję wybrać. */
+const ADAPT_KEY="xc70_adaptery";
+function adaptery(){try{return JSON.parse(localStorage.getItem(ADAPT_KEY)||"[]")}catch(_){return[]}}
+function zapiszAdapter(d,profil){
+  if(!d)return;
+  const lista=adaptery().filter(a=>a.id!==d.id);
+  lista.unshift({id:d.id||null,nazwa:d.name||profil||"adapter",profil:profil||null,ostatnio:wall()});
+  try{localStorage.setItem(ADAPT_KEY,JSON.stringify(lista.slice(0,5)))}catch(_){}
+  rysujAdaptery();
+}
+function zapomnijAdapter(id){
+  try{localStorage.setItem(ADAPT_KEY,JSON.stringify(adaptery().filter(a=>a.id!==id)))}catch(_){}
+  rysujAdaptery();
+}
+function rysujAdaptery(){
+  const el=$("#connSaved"); if(!el)return;
+  const l=adaptery();
+  el.innerHTML=l.length?l.map(a=>
+    '<div class="qrow"><span class="qi">'+String(a.nazwa).replace(/[<>]/g,"")+
+    '<small>ostatnio '+String(a.ostatnio||"").slice(0,16).replace("T"," ")+'</small></span>'+
+    '<button class="secondary" data-zapomnij="'+(a.id||"")+'">Zapomnij</button></div>').join("")
+    : '<div class="empty-state">Brak zapamiętanych. Pierwsze połączenie zapamięta adapter.</div>';
+  el.querySelectorAll("[data-zapomnij]").forEach(b=>b.onclick=()=>zapomnijAdapter(b.dataset.zapomnij));
+}
+
+async function wybierzUrzadzenie(){
+  /* Najpierw próbujemy bez okna wyboru: jeśli przeglądarka pamięta zgodę na wcześniej
+     używany adapter, łączymy się od razu. */
+  const zapamietane=adaptery();
+  if(navigator.bluetooth.getDevices&&zapamietane.length){
+    try{
+      const znane=await navigator.bluetooth.getDevices();
+      const trafiony=znane.find(d=>zapamietane.some(a=>a.id===d.id));
+      if(trafiony){krok("dev","ok",trafiony.name+" — bez okna wyboru");return trafiony}
+    }catch(_){}
+  }
+  const d=await navigator.bluetooth.requestDevice({acceptAllDevices:true,
+    optionalServices:PROFILES.map(p=>p.service)});
+  krok("dev","ok",d.name||"urządzenie bez nazwy");
+  return d;
+}
+
+async function connect(){
+  otworzPanelPolaczenia();
+  krokReset();
+  const e=$("#connErr"); if(e)e.innerHTML="";
+  const t=$("#connTitle"); if(t)t.textContent="Łączenie";
+  krok("bt","run");
+  if(!navigator.bluetooth){
+    krokBlad("bt","Przeglądarka nie udostępnia Web Bluetooth.",
+      "Potrzebny Chrome na Androidzie i połączenie po HTTPS.");
+    event("ERROR","Web Bluetooth niedostępny. Wymagane HTTPS oraz zgodna przeglądarka.");
+    return false;
+  }
+  krok("bt","ok");
+  try{
+    krok("dev","run","szukam…");
+    setStatus("skanowanie…");
+    device=await wybierzUrzadzenie();
+    device.addEventListener("gattserverdisconnected",onDisconnected);
+
+    krok("gatt","run");
+    server=await device.gatt.connect();
+    krok("gatt","ok");
+
+    krok("chr","run");
+    const picked=await findCharacteristics(server);
+    if(!picked){
+      krokBlad("chr","Adapter połączony, ale nie ma znanego serwisu write+notify.",
+        "To urządzenie prawdopodobnie nie jest adapterem ELM327 BLE.");
+      try{device.gatt.disconnect()}catch(_){}
+      return false;
+    }
+    writeChar=picked.w;notifyChar=picked.n;serviceUuid=picked.svc.uuid;adapterProfile=picked.profile;
+    await notifyChar.startNotifications();
+    notifyChar.addEventListener("characteristicvaluechanged",onNotify);
+    krok("chr","ok",picked.profile);
+
+    connected=true;
+    $("#device").hidden=false;$("#device").textContent=device.name||adapterProfile;
+    setStatus("połączony","on");
+    zapiszAdapter(device,adapterProfile);
+    event("INFO","BLE połączone",{adapter:{name:device.name||null,profile:adapterProfile,
+      service_uuid:serviceUuid,write_uuid:writeChar.uuid,notify_uuid:notifyChar.uuid}});
+    refresh();
+    return true;
+  }catch(err){
+    const m=String(err&&err.message||err);
+    if(/cancel|User cancelled/i.test(m))krokBlad("dev","Wybór adaptera anulowany.","Naciśnij Szukaj adaptera, żeby spróbować ponownie.");
+    else krokBlad("gatt","Nie udało się połączyć: "+m,
+      "Sprawdź, czy adapter jest wpięty i czy nie jest połączony z inną aplikacją.");
+    event("ERROR","Połączenie: "+m);
+    setStatus("rozłączony","err");
+    return false;
+  }
+}
+function otworzPanelPolaczenia(){rysujAdaptery();$("#connectPanel").classList.add("show")}
+function zamknijPanelPolaczenia(){$("#connectPanel").classList.remove("show")}
+
+/* ═══════════ POTWIERDZENIE ═══════════
+   Używane tam, gdzie akcja jest nieodwracalna. Treść MUSI mówić, co dokładnie zniknie. */
+let confirmResolve=null;
+function potwierdz(tytul,tresc,tak){
+  return new Promise(res=>{
+    confirmResolve=res;
+    $("#confirmTitle").textContent=tytul;
+    $("#confirmBody").innerHTML=tresc;
+    $("#confirmYes").textContent=tak||"Tak, usuń";
+    $("#confirmBox").classList.add("show");
+  });
+}
+function zamknijPotwierdzenie(v){
+  $("#confirmBox").classList.remove("show");
+  if(confirmResolve){const r=confirmResolve;confirmResolve=null;r(v)}
+}
+
+function onDisconnected(){connected=false;monitoring=false;autoRunning=false;if(responseTimer)clearTimeout(responseTimer);responseTimer=null;if(inflight){const ex=inflight;inflight=null;ex.status="DISCONNECTED";ex.text=rxBuffer;ex.correlation={pass:false,reason:"disconnect"};logExchange(ex);ex.resolve(publicResult(ex))}while(queue.length){const q=queue.shift();q.resolve({cmd:q.cmd,status:"DISCONNECTED",text:""})}drain=null;settle=null;listening=false;rxBuffer="";writeChar=notifyChar=server=null;setStatus("rozłączony","err");event("ERROR","GATT rozłączony");refresh()}
+async function disconnect(){monitoring=false;autoRunning=false;try{if(device&&device.gatt.connected)device.gatt.disconnect()}catch(_){}refresh()}
+
+async function runCommands(commands){const out=[];for(const c of commands){if(!connected)break;const r=await enqueue(c,DEFAULT_TIMEOUT);out.push(r);await delay(c.startsWith("ATSP")?350:100)}return out}
+const delay=ms=>new Promise(r=>setTimeout(r,ms));
+/* CAF1 (a nie CAF0!) — przy wlaczonym formatowaniu adapter SAM wysyla ramke sterowania
+   przeplywem dla komunikatow wieloczesciowych. Car Scanner nie wysyla ATCAF wcale, czyli
+   zostawia domyslne CAF1, i osiaga 97,8%. Format ramek zalezy od ATH, nie od CAF:
+   przy ATH1 adapter wypisuje ramki pojedynczo z naglowkiem — czego potrzebujemy.
+   ATST 08 = 32 ms: wartosc zmierzona u Car Scannera na TYM aucie, nie oszacowana. */
+const ELM_PROFILE=["ATZ","ATI","AT@1","ATE0","ATL0","ATS1","ATH1","ATAL","ATAT1","ATST 08","ATCAF1","ATSP6"];
+/* Ustawienia dla konkretnego rozmówcy: adres zapytania, filtr odpowiedzi i sterowanie przepływem.
+   Bez ATFCS* ramki wieloczęściowe (nasz DAB6) potrafią się nie doczekać potwierdzenia. */
+function endpointCommands(req,resp){return ["ATSH "+req,"ATCRA "+resp,"ATFCSH "+req,"ATFCSD 300005","ATFCSM 1"]}
+async function configureObd(){resetIsoTp();return runCommands(ELM_PROFILE.concat(endpointCommands("7E0","7E8")))}
+/* Nazwa rozmówcy była dotąd wyłącznie etykietą w dzienniku: adapter zostawał tam, gdzie
+   ustawiła go poprzednia czynność. Po skanie modułów nagłówek potrafił zostać na 7C7, a
+   zapytanie „do ECM" szło pod zły adres i cicho wygasało — dokładnie tak wyglądał nieudany
+   odczyt VIN-u. Teraz nazwa jest wiążąca; gdy adres już się zgadza, nie wysyłamy nic. */
+async function requestVehicle(cmd,endpoint,timeout=DEFAULT_TIMEOUT){const ep=ENDPOINTS[endpoint];if(ep&&adapterState.header!==ep.request){event("INFO","ROZMÓWCA_PRZYWRÓCONY",{z:adapterState.header,na:ep.request,dla:cmd});resetIsoTp();await runCommands(endpointCommands(ep.request,ep.response))}for(let pending=0;pending<4;pending++){const res=await enqueue(cmd,timeout,{endpoint});if(res.meta&&res.meta.status==="NEGATIVE_RESPONSE"&&res.meta.nrc==="78"){event("INFO",`NRC 78 dla ${cmd}; oczekiwanie ${pending+1}/4`);await delay(500);continue}return res}return{cmd,status:"RESPONSE_PENDING_LIMIT",text:"",correlation:{pass:false,reason:"nrc78_limit"}}}
+
+function responseTokens(text){return (text||"").toUpperCase().replace(/[>\r\n]/g," ").split(/\s+/).filter(t=>/^[0-9A-F]{2}$/.test(t))}
+/* ELM z CAF1 może zwrócić jeden prefiks 41, a następnie sklejone PID+data:
+   41 0C 09 3D 04 47 05 ... . Obsługujemy też kolejne segmenty zaczynające się od 41. */
+function parsePidMap(text){
+  const bytes=responseTokens(text),out={};
+  let i=0;
+  while(i<bytes.length){
+    if(bytes[i]!=="41"){i++;continue}
+    i++;
+    while(i<bytes.length&&bytes[i]!=="41"){
+      const pid=bytes[i],len=PID_LEN[pid];
+      if(len==null||i+1+len>bytes.length)break;
+      out[pid]=bytes.slice(i+1,i+1+len).map(x=>parseInt(x,16));
+      i+=1+len;
+    }
+  }
+  return out;
+}
+function decodePid(pid,b){
+  if(!b)return null;
+  const u=(value,unit,digits=1)=>({value,unit,display:Number(value).toFixed(digits)});
+  const w=()=>b[0]*256+b[1];
+  switch(pid){
+    case"0C":return u(w()/4,"rpm",0);
+    case"04":return u(b[0]*100/255,"%",0);
+    case"43":return u(w()*100/255,"%",0);
+    case"05":return u(b[0]-40,"°C",0);
+    case"0F":return u(b[0]-40,"°C",0);
+    case"46":return u(b[0]-40,"°C",0);
+    case"06":case"07":case"55":case"56":return u((b[0]-128)*100/128,"%",1);
+    case"0B":return u(b[0],"kPa",0);
+    case"33":return u(b[0],"kPa",0);
+    case"0A":return u(b[0]*3,"kPa",0);
+    case"0D":return u(b[0],"km/h",0);
+    case"0E":return u(b[0]/2-64,"°",1);
+    case"10":return u(w()/100,"g/s",2);
+    case"11":case"45":case"47":case"49":case"4A":case"4C":return u(b[0]*100/255,"%",0);
+    case"15":return u(b[0]/200,"V",3);            /* sonda za katalizatorem */
+    case"1F":return u(w(),"s",0);
+    case"21":return u(w(),"km",0);
+    case"2F":return u(b[0]*100/255,"%",1);        /* poziom paliwa */
+    case"30":return u(b[0],"rozruchów",0);
+    case"31":return u(w(),"km",0);                /* dystans od skasowania kodów */
+    case"34":return u((w()/65536)*2,"λ",3);
+    case"44":return u((w()/32768),"λ",3);         /* lambda zadana */
+    case"3C":return u(w()/10-40,"°C",0);          /* temperatura katalizatora */
+    case"42":return u(w()/1000,"V",2);
+    case"51":return u(b[0],"kod",0);
+    default:return null;
+  }
+}
+/* 12 B → 6 × uint16 BE. Zwraca surowe liczniki ECU (bez akumulacji). */
+function decodeMisfire(bytes){if(!bytes||bytes.length<MISFIRE_CYL*2)return null;const out=[];
+  for(let c=0;c<MISFIRE_CYL;c++){const hi=bytes[c*2],lo=bytes[c*2+1];if(hi==null||lo==null)return null;out.push((hi<<8)|lo)}
+  return out}
+/* Akumulacja przyrostów. Licznik ECU jest kroczący i sam się zeruje; gdy spadnie, bieżąca
+   wartość narosła już od zera i trzeba ją doliczyć — inaczej gubimy wypady sprzed zerowania.
+   Zmierzone na 15 271 odczytach: bez tego tracimy ok. 1,4% zdarzeń przy gęstym odpycie
+   i wyraźnie więcej przy rzadkim. */
+/* Podział wypadów na paliwo jest osią całej diagnostyki tego auta: wypadanie wyłącznie
+   na gazie to inny trop niż na obu paliwach. Liczymy więc równolegle sumę i dwa kubełki. */
+const misfireByFuel={LPG:new Array(MISFIRE_CYL).fill(0),BENZYNA:new Array(MISFIRE_CYL).fill(0)};
+const misfireMinutes={LPG:0,BENZYNA:0};
+let misfireLastT=null;
+function accumulateMisfire(raw){
+  if(misfirePrev)for(let c=0;c<MISFIRE_CYL;c++){
+    const d=raw[c]-misfirePrev[c];
+    const przyrost=d>0?d:(d<0?raw[c]:0);
+    misfireTotals[c]+=przyrost;
+    if(misfireByFuel[fuelState])misfireByFuel[fuelState][c]+=przyrost;
+  }
+  const t=mono();
+  if(misfireLastT!=null&&misfireByFuel[fuelState]&&t-misfireLastT<8000)
+    misfireMinutes[fuelState]+=(t-misfireLastT)/60000;
+  misfireLastT=t;
+  misfirePrev=raw.slice();
+}
+function emitMisfire(source,rawHex){
+  for(let c=0;c<MISFIRE_CYL;c++)
+    acceptSample(`powertrain.misfire.cyl${c+1}`,{value:misfireTotals[c],unit:"wypady",display:String(misfireTotals[c])},source,rawHex,"confirmed_did_order_inferred");
+}
+function applyMisfire(raw,source,rawHex){accumulateMisfire(raw);emitMisfire(source,rawHex)}
+/* Pasmo szybkie: to, co niesie diagnostyke misfire i regulacji — co kazdy cykl.
+   Pasmo wolne: wielkosci zmieniajace sie powoli — co SLOW_EVERY cykli, zeby nie rozrzedzac misfire. */
+const MONITOR_SINGLE=["0C","04","05","0B","06","07","34","15"];
+const MONITOR_SLOW=["0A","0D","0E","0F","10","11","2F","31","33","3C","42","43","44","46","1F","55","56"];
+const SLOW_EVERY=10;
+const PID_SIGNALS={"0C":"powertrain.engine.speed.obd","04":"powertrain.engine.load","05":"powertrain.coolant.temperature","06":"powertrain.fuel.trim.short","07":"powertrain.fuel.trim.long","0B":"powertrain.intake.map","0A":"powertrain.fuel.rail_pressure.obd","34":"powertrain.lambda.b1s1","15":"powertrain.lambda.b1s2.voltage","44":"powertrain.lambda.commanded","3C":"powertrain.catalyst.temperature","2F":"vehicle.fuel.level","31":"vehicle.distance.since_clear","0D":"vehicle.speed","0E":"powertrain.ignition.advance","0F":"powertrain.intake.air.temperature","10":"powertrain.maf","11":"powertrain.throttle","33":"ambient.barometric","42":"electrical.module.voltage","43":"powertrain.engine.load.absolute","46":"ambient.temperature","1F":"powertrain.runtime","55":"powertrain.fuel.trim.short.s2","56":"powertrain.fuel.trim.long.s2"};
+function acceptSample(signalId,decoded,source,raw,confidence="standard_obd"){const now=mono(),sample={session:sessionId,seq:++seq,sample_id:uuid(),signal_id:signalId,source_exchange_id:source.exchangeId,endpoint_id:source.endpoint||"ECM",request_payload:source.cmd,response_payload_raw:raw,value:decoded.value,unit:decoded.unit,observed_at_monotonic_ms:now,observed_at_wallclock:wall(),quality_status:"valid",acquisition_mode:"active_poll",decoder_id:signalId,decoder_version:APP_VERSION,definition_pack_hash:"builtin-v0.7.3",definition_confidence:confidence,reject_reason:null,fuel_state:fuelState};sessionSampleCount++;dbPut("sample",sample);if(signalId==="powertrain.fuel.trim.short"&&monitoring)fuelWatchFeed(decoded.value,now);lastSignals.set(signalId,{...sample,display:decoded.display});notujZakres(signalId,decoded.value);if(signalId==="vehicle.distance.since_clear")noteOdoReading();view("sample",`${signalId}=${decoded.display} ${decoded.unit}`)}
+const ETYKIETY_SYGNALOW={"powertrain.engine.speed.obd":"Obroty","powertrain.engine.load":"Obciążenie","powertrain.coolant.temperature":"Płyn chłodzący","powertrain.fuel.trim.short":"Korekta STFT","powertrain.fuel.trim.long":"Korekta LTFT","powertrain.intake.map":"Ciśnienie MAP","powertrain.fuel.rail_pressure.obd":"Ciśn. paliwa","powertrain.lambda.b1s1":"Lambda B1S1","powertrain.engine.speed.enhanced":"Obroty · DID","powertrain.fuel.rail_pressure.enhanced":"Rail · DID","powertrain.misfire.cyl1":etykietaWypadu(1),"powertrain.misfire.cyl2":etykietaWypadu(2),"powertrain.misfire.cyl3":etykietaWypadu(3),"powertrain.misfire.cyl4":etykietaWypadu(4),"powertrain.misfire.cyl5":etykietaWypadu(5),"powertrain.misfire.cyl6":etykietaWypadu(6),"powertrain.lambda.b1s2.voltage":"Sonda za kat.","powertrain.lambda.commanded":"Lambda zadana","powertrain.catalyst.temperature":"Temp. katalizatora","vehicle.fuel.level":"Poziom paliwa","vehicle.distance.since_clear":"Od skasowania","vehicle.speed":"Prędkość","powertrain.ignition.advance":"Wyprzedzenie","powertrain.intake.air.temperature":"Temp. dolotu","powertrain.maf":"Przepływ powietrza","powertrain.throttle":"Przepustnica","ambient.barometric":"Ciśn. atmosf.","electrical.module.voltage":"Napięcie","powertrain.engine.load.absolute":"Obciążenie abs.","ambient.temperature":"Temp. otoczenia","powertrain.runtime":"Czas pracy","powertrain.fuel.trim.short.s2":"STFT sonda 2","powertrain.fuel.trim.long.s2":"LTFT sonda 2"};
+/* Karta bez odniesienia zmusza użytkownika do pamiętania progów z głowy, więc odniesienie
+   jest obowiązkowe. Tam, gdzie norma istnieje — podajemy normę. Tam, gdzie nie istnieje —
+   zakres zaobserwowany w tej sesji, bo to też jest punkt odniesienia, tylko uczciwszy niż nic. */
+const NORMY={
+  "powertrain.lambda.b1s1":{txt:"norma 0,97–1,03",zle:v=>v<0.95||v>1.05},
+  "powertrain.lambda.commanded":{txt:"norma ok. 1,00",zle:v=>v<0.9||v>1.1},
+  "powertrain.fuel.rail_pressure.obd":{txt:"norma 350–400 kPa",zle:v=>v>200&&(v<330||v>430)},
+  "powertrain.fuel.trim.long":{txt:"norma ±10%",zle:v=>Math.abs(v)>10},
+  "powertrain.fuel.trim.short":{txt:"norma ±10%",zle:v=>Math.abs(v)>10},
+  "powertrain.fuel.trim.long.s2":{txt:"norma ±10%",zle:v=>Math.abs(v)>10},
+  "powertrain.fuel.trim.short.s2":{txt:"norma ±10%",zle:v=>Math.abs(v)>10},
+  "powertrain.coolant.temperature":{txt:"robocza 88–96 °C",zle:v=>v>105},
+  "powertrain.catalyst.temperature":{txt:"norma do 850 °C",zle:v=>v>850},
+  "electrical.module.voltage":{txt:"praca 13,8–14,6 V",zle:v=>v<12.2||v>15},
+  "powertrain.lambda.b1s2.voltage":{txt:"za kat. 0,6–0,8 V",zle:v=>false}
+};
+const KARTY_GLOWNE=["powertrain.lambda.b1s1","powertrain.fuel.rail_pressure.obd",
+  "powertrain.fuel.trim.long","powertrain.fuel.trim.short",
+  "powertrain.engine.speed.obd","powertrain.engine.load"];
+const zakresy=new Map();
+function notujZakres(id,v){const z=zakresy.get(id);
+  if(!z)zakresy.set(id,{min:v,max:v}); else{if(v<z.min)z.min=v;if(v>z.max)z.max=v}}
+function odniesienie(id,v){
+  const n=NORMY[id];
+  if(n)return{txt:n.txt+(n.zle(v)?" · przekroczone":""),zle:n.zle(v)};
+  const z=zakresy.get(id);
+  if(z&&z.max-z.min>0.01)return{txt:"sesja "+z.min.toFixed(1).replace(".",",")+"–"+z.max.toFixed(1).replace(".",","),zle:false};
+  return{txt:"bez normy odniesienia",zle:false};
+}
+function renderCards(){
+  const labels=ETYKIETY_SYGNALOW;
+  /* Sześć kart wypadów znika z siatki — zastąpił je panel silnika. Siatka zaczyna się od lambdy. */
+  const wszystkie=[...lastSignals.entries()].filter(([id])=>!/^powertrain\.misfire\.cyl/.test(id));
+  if(!wszystkie.length){
+    cardsEl.innerHTML=connected?'<div class="empty-state">Uruchom monitor — parametry pojawią się tutaj.</div>':"";
+    const mb=$("#moreBtn");if(mb)mb.hidden=true;
+    return;
+  }
+  const now=mono();
+  const karta=([id,sg])=>{
+    const age=Math.max(0,now-sg.observed_at_monotonic_ms), stale=age>12000;
+    const ref=odniesienie(id,sg.value);
+    const stan=stale?"stale":(ref.zle?"warn":"ok");
+    return '<div class="pc" data-s="'+stan+'">'+
+      '<div class="l">'+(labels[id]||id)+'</div>'+
+      '<div class="v">'+sg.display+'<u>'+sg.unit+'</u></div>'+
+      '<div class="ref">'+(stale?"STALE · sprzed "+(age/1000).toFixed(0)+" s":ref.txt)+'</div></div>';
+  };
+  const glowne=[],reszta=[];
+  for(const e of wszystkie)(KARTY_GLOWNE.includes(e[0])?glowne:reszta).push(e);
+  glowne.sort((a,b)=>KARTY_GLOWNE.indexOf(a[0])-KARTY_GLOWNE.indexOf(b[0]));
+  cardsEl.innerHTML=glowne.map(karta).join("");
+  const mb=$("#moreBtn"), mg=$("#cardsMore");
+  if(mb&&mg){
+    mb.hidden=!reszta.length;
+    mb.textContent=(mg.hidden?"▸":"▾")+" Więcej parametrów ("+reszta.length+")";
+    mg.innerHTML=reszta.map(karta).join("");
+  }
+  drawEngine();
+}
+function updateSessionUi(){
+  const elapsed=sessionStartedMono?Math.max(0,mono()-sessionStartedMono):0,mins=Math.floor(elapsed/60000),secs=Math.floor(elapsed/1000)%60;
+  $("#sessionTime").textContent=String(mins).padStart(2,"0")+":"+String(secs).padStart(2,"0");
+  $("#sampleCount").textContent=sessionSampleCount.toLocaleString("pl-PL");$("#exchangeCount").textContent=sessionExchangeCount.toLocaleString("pl-PL");
+  const issues=counters.timeouts+counters.late+counters.mismatch+counters.bufferFull+counters.writeFail;
+  const pr=$("#postRun");
+  if(pr){const ready=sessionSampleCount>0&&!monitoring&&!autoRunning;
+    pr.hidden=!ready;
+    $("#postRunTitle").textContent=ready?("zatrzymany "+new Date().toLocaleTimeString("pl-PL",{hour:"2-digit",minute:"2-digit"})):"";
+    $("#postRunCount").textContent=sessionSampleCount.toLocaleString("pl-PL")+" próbek · "+
+      String(Math.floor(elapsed/60000)).padStart(2,"0")+":"+String(Math.floor(elapsed/1000)%60).padStart(2,"0");
+    $("#pushNow").disabled=exporting||!repoReady();
+    $("#pushNow").textContent=repoReady()?"Wyślij do repo":"Skonfiguruj repo (⚙)";
+    /* Status wysyłki nie znika po chwili — żyje do rozpoczęcia nowej sesji. */
+    const rs=$("#repoStatus");
+    if(rs&&!rs.textContent)rs.innerHTML=repoReady()
+      ?'<span class="eyebrow" style="text-transform:none;letter-spacing:0">Auto-wysyłka '+
+        (repoCfg().auto!==false?"włączona — plik pójdzie po zatrzymaniu monitora":"wyłączona — wyślij ręcznie")+'</span>'
+      :'<span class="eyebrow" style="text-transform:none;letter-spacing:0">Repozytorium nieskonfigurowane (⚙)</span>';
+  }
+  const proc=sessionExchangeCount?Math.max(0,100-issues*100/sessionExchangeCount):100;
+  $("#dataState").textContent=sessionExchangeCount?proc.toFixed(0)+"%":"—";
+  $("#dataState").style.color=proc>=98?"var(--sage)":proc>=90?"var(--amber)":"var(--red)";
+  const db=$("#diagBox");
+  if(db)db.innerHTML="wersja <b style=\"color:var(--cream)\">"+APP_VERSION+"</b> · wymian "+
+    sessionExchangeCount+" · przeterminowań "+counters.timeouts+" · odzyskanych "+counters.salvaged+
+    " · ruch obcy "+counters.busTraffic+"<br>zaległe w kolejce: "+(pendingList?pendingList.length:0);
+  $("#integrity").textContent=(issues?`Timeout ${counters.timeouts} · spóźnione ${counters.late} · mismatch ${counters.mismatch} · buffer ${counters.bufferFull}`+(counters.writeFail?` · NIEZAPISANE ${counters.writeFail}`:""):"Brak wykrytych problemów integralności w tej sesji.")+(counters.salvaged?` · odzyskane ${counters.salvaged}`:"")+(counters.busTraffic?` · ruch obcy ${counters.busTraffic}`:"");
+}
+setInterval(()=>{renderCards();updateSessionUi();checkAnomalies();renderPodsumowanie();setBus()},1000);
+
+/* Wznowienie monitora dokłada dane do sesji, która była już wysłana — od tej chwili
+   plik na repozytorium znów jest nieaktualny, więc ostrzeżenie przed zamknięciem wraca. */
+async function monitor(){monitoring=true;sessionPushed=false;holdAutoPush=false;refresh();event("INFO","Monitor start: ATH1 + CAF1, składanie ISO-TP po stronie aplikacji, pojedyncze PID-y");/* Nagłówek ustawiamy RAZ na 7E0 (adresowanie fizyczne do ECM) i już nie przełączamy.
+   Zmierzone na aucie 29.07: powrót na 7DF kończył się STOPPED 70/70, bo magistrala nigdy nie
+   milknie — inny nadawca (najpewniej sterownik LPG) odpytuje ECM w pętli ~60 ms. Mimo to tryb 01
+   adresowany do 7E0 działa: 67/70 zapytań tuż po nieudanym ATSH było poprawnie skorelowanych.
+   Rezygnacja z przełączania usuwa 140 komend AT na sesję i całą klasę błędów STOPPED. */
+resetIsoTp();await runCommands(["ATE0","ATL0","ATS1","ATH1","ATAL","ATAT1","ATST 08","ATCAF1","ATSP6"].concat(endpointCommands("7E0","7E8")));/* Pojedynczy PID na zapytanie. Grupowanie wymusza odpowiedz wieloramkowa i cala jej zlozonosc;
+   Car Scanner pyta pojedynczo (123 583 razy) i dostaje ramki pojedyncze — 97,8% skutecznosci. */
+  const groups=MONITOR_SINGLE.map(p=>"01"+p);let cycle=0;while(monitoring&&connected){cycle++;
+  for(const cmd of groups){if(!monitoring||!connected)break;const res=await requestVehicle(cmd,"ECM",POLL_TIMEOUT);if(res.correlation&&res.correlation.pass){const map=parsePidMap(res.text);for(const[pid,bytes]of Object.entries(map)){const decoded=decodePid(pid,bytes);if(decoded&&PID_SIGNALS[pid])acceptSample(PID_SIGNALS[pid],decoded,res,bytes.map(x=>x.toString(16).padStart(2,"0")).join(" "))}}await delay(REQUEST_GAP_MS)}
+  if(!monitoring||!connected)break;
+  /* Pasmo wolne — raz na SLOW_EVERY cykli. Wielkości zmieniające się powoli nie muszą
+     konkurować o czas z licznikami wypadów. */
+  if(cycle%SLOW_EVERY===1){
+    for(const pid of MONITOR_SLOW){
+      if(!monitoring||!connected)break;
+      const r=await requestVehicle("01"+pid,"ECM",POLL_TIMEOUT);
+      if(r.correlation&&r.correlation.pass){
+        const mp=parsePidMap(r.text);
+        for(const[k,by]of Object.entries(mp)){
+          const dv=decodePid(k,by);
+          if(dv&&PID_SIGNALS[k])acceptSample(PID_SIGNALS[k],dv,r,by.map(x=>x.toString(16).padStart(2,"0")).join(" "));
+        }
+      }
+      await delay(REQUEST_GAP_MS);
+    }
+    if(!monitoring||!connected)break;
+  }
+  /* Nagłówek zostaje na 7E0 przez cały monitor — patrz komentarz przy starcie. */
+  let lastRes=null,lastHex=null;
+  for(let k=0;k<MISFIRE_READS;k++){
+    if(!monitoring||!connected)break;
+    const mres=await requestVehicle("22"+MISFIRE_DID,"ECM",DID_POLL_TIMEOUT);
+    if(mres.correlation&&mres.correlation.pass&&(!mres.meta||mres.meta.status!=="NEGATIVE_RESPONSE")){
+      const bytes=extractDidData(mres.text,MISFIRE_DID),rawCounts=decodeMisfire(bytes);
+      if(rawCounts){accumulateMisfire(rawCounts);lastRes=mres;lastHex=bytes.slice(0,MISFIRE_CYL*2).map(x=>x.toString(16).padStart(2,"0")).join(" ")}
+    }
+    if(k<MISFIRE_READS-1)await delay(120);
+  }
+  if(lastRes)emitMisfire(lastRes,lastHex);   /* jedna próbka na cykl, nie na odczyt */
+  await delay(REQUEST_GAP_MS);
+}monitoring=false;refresh();event("INFO","Monitor zatrzymany");await touchSession({closed:true});/* Automatyczna wysyłka po pomiarze — sedno punktu „zbieramy i przesyłamy bez ręcznej roboty".
+   Pominięta, gdy monitor zatrzymała czynność laboratoryjna: sesja trwa dalej. */if(repoReady()&&repoCfg().auto!==false&&!holdAutoPush){try{await pushSession(!!repoCfg().chunks)}catch(err){setRepoStatus("Wysyłka nieudana: "+String(err&&err.message||err),"err")}}}
+
+function f32be(bytes){const a=new Uint8Array(bytes),dv=new DataView(a.buffer,a.byteOffset,a.byteLength);return dv.getFloat32(0,false)}
+function extractDidData(text,did){const tokens=responseTokens(text);for(let i=0;i+2<tokens.length;i++)if(tokens[i]==="62"&&(tokens[i+1]+tokens[i+2])===did)return tokens.slice(i+3).map(x=>parseInt(x,16));return null}
+function candidateViews(bytes){const out=["hex="+bytes.map(x=>x.toString(16).padStart(2,"0")).join(" ")];if(bytes.length>=1)out.push("u8="+bytes[0],"s8="+(bytes[0]>127?bytes[0]-256:bytes[0]));if(bytes.length>=2){const u16=bytes[0]*256+bytes[1];out.push("u16be="+u16,"s16be="+(u16>32767?u16-65536:u16))}if(bytes.length>=4)out.push("f32be="+f32be(bytes.slice(0,4)));return out.join(" · ")}
+function decodeDefinition(def,bytes){if(def.codec==="float32_be"&&bytes.length>=4)return{value:f32be(bytes.slice(0,4)),unit:def.unit,display:f32be(bytes.slice(0,4)).toFixed(def.unit==="rpm"?0:2)};return null}
+
+
+
+
+
+/* ═══════════ CZUJKA ZMIANY ZASILANIA ═══════════
+   Reguła zwalidowana na 13 sesjach: mediana korekty krótkoterminowej w oknie minutowym powyżej
+   progu. Zmierzona skuteczność: 5 wykryć, z tego 2 przy realnym przełączeniu, 3 fałszywe.
+   DLATEGO czujka NIE przestawia paliwa sama — przy takiej trafności zatruwałaby dane, na których
+   stoi cała analiza. Zapisuje podejrzenie jako zdarzenie i pyta człowieka.
+   Zysk: znacznik dostaje czas WYKRYCIA, nie czas kliknięcia. Przy wyczerpaniu butli 03.08
+   kliknięcie było spóźnione o 64 sekundy względem faktycznego przełączenia. */
+const FUEL_WATCH_TH=12, FUEL_WATCH_WIN=60000, FUEL_WATCH_COOLDOWN=180000;
+let stftWin=[], lastSuspicion=-1e9, suspicionAt=null;
+function fuelWatchFeed(value,t){
+  stftWin.push({t,v:value});
+  const cut=t-FUEL_WATCH_WIN;
+  while(stftWin.length&&stftWin[0].t<cut)stftWin.shift();
+  if(stftWin.length<5)return;
+  const sorted=stftWin.map(x=>x.v).sort((a,b)=>a-b);
+  const med=sorted[Math.floor(sorted.length/2)];
+  if(med<FUEL_WATCH_TH)return;
+  if(t-lastSuspicion<FUEL_WATCH_COOLDOWN)return;
+  lastSuspicion=t;
+  /* Początek okna to moment, w którym zjawisko się zaczęło — to jego zapisujemy. */
+  suspicionAt={mono:stftWin[0].t,wall:new Date(Date.now()-(t-stftWin[0].t)).toISOString(),median:med};
+  event("INFO","PODEJRZENIE_ZMIANY_PALIWA",{wykryto_o:suspicionAt.wall,mediana_stft:+med.toFixed(1),
+    paliwo_przyjete:fuelState,uwaga:"czujka tylko sygnalizuje; stan paliwa zmienia potwierdzenie użytkownika"});
+  showSuspicion(med);
+}
+function showSuspicion(med){
+  const el=$("#suspicion"); if(!el)return;
+  const t=suspicionAt?suspicionAt.wall.slice(11,19):"";
+  $("#suspicionText").textContent="Korekta paliwowa skoczyła do "+med.toFixed(0)+"% o "+t+
+    ". Wygląda na zmianę zasilania. Jakie paliwo?";
+  el.classList.add("show");
+}
+function resolveSuspicion(choice){
+  const el=$("#suspicion"); if(el)el.classList.remove("show");
+  if(!suspicionAt)return;
+  if(choice==="none"){
+    event("INFO","PODEJRZENIE_ODRZUCONE",{wykryto_o:suspicionAt.wall,paliwo_pozostaje:fuelState});
+  }else{
+    const prev=fuelState;
+    fuelState=choice;
+    $("#fuel").textContent=choice;$("#fuel").className="status on";
+    $$('[data-fuel]').forEach(b=>b.classList.toggle("active",b.dataset.fuel===choice));
+    event("INFO","FUEL_STATE "+choice,{event_type:"fuel_transition",fuel_state:choice,
+      poprzednie:prev,zrodlo:"potwierdzone przez użytkownika po wykryciu",
+      wykryto_o:suspicionAt.wall,mediana_stft:+suspicionAt.median.toFixed(1)});
+  }
+  suspicionAt=null;refresh();
+}
+
+/* ═══════════ RAMKA ZAMROŻONA (tryb 02) ═══════════
+   Sterownik zapisuje zdjęcie warunków z chwili, gdy kod stał się potwierdzony: obroty, obciążenie,
+   temperatura, korekty. Tych danych NIE DA SIĘ odtworzyć później — kasowanie kodu usuwa je bezpowrotnie.
+   Odpowiedź ma postać: 42 <PID> <numer ramki> <dane>, więc payload zaczyna się od czwartego bajtu. */
+const FREEZE_PIDS=["02","03","04","05","06","07","0B","0C","0D","0E","0F","10","11","1F"];
+function decodeDtcWord(hi,lo){
+  const L=["P","C","B","U"][(hi>>6)&3];
+  return L+((hi>>4)&3)+((hi&0x0F).toString(16)+lo.toString(16).padStart(2,"0")).toUpperCase();
+}
+/* Ile kodów niesie odpowiedź 43: pierwszy bajt po 0x43 to licznik. "43 00" = zero kodów. */
+function dtcCountFrom43(text){
+  const t=(text||"").toUpperCase().split(/\s+/).filter(x=>/^[0-9A-F]{2}$/.test(x)).map(x=>parseInt(x,16));
+  const i=t.indexOf(0x43);
+  return i>=0&&t.length>i+1?t[i+1]:null;
+}
+/* Odpowiedź trybu 02 to 42 <PID> <nr ramki> <dane>, ale nie każdy sterownik odsyła numer
+   ramki. Zgadywanie „przeskocz trzy bajty" po cichu przesuwało dane o jeden i dawało
+   prawdopodobnie wyglądające, a błędne wartości. Rozstrzygamy po ZNANEJ długości PID-u:
+   jeśli po identyfikatorze zostało dokładnie tyle bajtów, ile ma dana wielkość — numeru
+   ramki nie ma; jeśli o jeden więcej — jest i trzeba go pominąć. */
+const FREEZE_LEN={...PID_LEN,"02":2};
+function freezePayload(bytes,i,pid){
+  const rest=bytes.slice(i+2);
+  const need=FREEZE_LEN[pid];
+  if(need==null)return rest.length>1?rest.slice(1):rest;   /* nieznana długość: zakładamy numer ramki */
+  if(rest.length===need)return rest;                        /* bez numeru ramki */
+  if(rest.length>=need+1)return rest.slice(1,1+need);       /* z numerem ramki */
+  return null;                                              /* za krótka — lepiej nic niż śmieci */
+}
+async function readFreezeFrame(){
+  const zajete=await freeBus();
+  if(zajete){$("#freezeResult").innerHTML='<div class="v FAIL">'+zajete+'</div>';return}
+  $("#freezeResult").innerHTML='<div class="v INFO">Sprawdzam, czy jest zapisany kod…</div>';
+  /* Ramka zamrożona istnieje tylko razem z kodem. Bez tego sprawdzenia odmowa 7F 02 22
+     wyglądała jak awaria transportu — a to normalna odpowiedź czystego sterownika
+     (zmierzone 06.08: 84 odmowy przy "43 00"). */
+  /* Pierwsze pytanie potrafi trafić w moment, gdy magistrala jeszcze dochodzi do siebie po
+     poprzednim teście — wtedy licznik kodów wychodzi null i odczyt idzie ślepą ścieżką
+     (zmierzone 07.08: kody:null tuż po teście ciśnienia). Dajemy drugą próbę. */
+  let d=await requestVehicle("03","ECM",POLL_TIMEOUT);
+  let ileKodow=(d.correlation&&d.correlation.pass)?dtcCountFrom43(d.text):null;
+  if(ileKodow==null){
+    await delay(400);
+    d=await requestVehicle("03","ECM",DEFAULT_TIMEOUT);
+    ileKodow=(d.correlation&&d.correlation.pass)?dtcCountFrom43(d.text):null;
+  }
+  if(ileKodow==null){
+    labZapisz("freeze",'<div class="v FAIL">Sterownik nie odpowiedział na pytanie o kody ('+String(d.status)+
+      '). Bez tego nie wiem, czy ramka w ogóle istnieje — spróbuj ponownie za chwilę.</div>',"brak odpowiedzi na 03");
+    event("INFO","RAMKA_ZAMROZONA",{wynik:"brak_odpowiedzi_03",status:d.status});
+    return;
+  }
+  if(ileKodow===0){
+    const proba=await requestVehicle("020200","ECM",POLL_TIMEOUT);
+    const nrc=proba.meta&&proba.meta.status==="NEGATIVE_RESPONSE"?proba.meta.nrc:null;
+    labZapisz("freeze",'<div class="v INCONCLUSIVE">Brak zapisanych kodów (43 00) — sterownik '+
+      'nie ma ramki zamrożonej, bo nie ma czego fotografować. <b>To stan prawidłowy, nie usterka.</b>'+
+      (nrc?' Potwierdzenie: odpowiedź 7F 02 '+nrc+' na zapytanie o ramkę.':'')+
+      '<br>Ramka pojawi się automatycznie razem z kodem — odczytaj ją wtedy PRZED kasowaniem.</div>',"brak kodów — brak ramki (stan prawidłowy)");
+    event("INFO","RAMKA_ZAMROZONA",{wynik:"brak_kodow",dtc:null,nrc});
+    return;
+  }
+  $("#freezeResult").innerHTML='<div class="v INFO">Kody: '+(ileKodow??"?")+'. Odczytuję ramkę…</div>';
+  const out=[];let dtc=null,any=false,odmowy=0,ciche=0,ostatniNrc=null;
+  for(const pid of FREEZE_PIDS){
+    if(!connected)break;
+    const res=await requestVehicle("02"+pid+"00","ECM",POLL_TIMEOUT);
+    if(res.meta&&res.meta.status==="NEGATIVE_RESPONSE"){odmowy++;ostatniNrc=res.meta.nrc;await delay(REQUEST_GAP_MS);continue}
+    if(!(res.correlation&&res.correlation.pass)){ciche++;await delay(REQUEST_GAP_MS);continue}
+    const t=(res.text||"").toUpperCase().split(/\s+/).filter(x=>/^[0-9A-F]{2}$/.test(x)).map(x=>parseInt(x,16));
+    const i=t.findIndex((x,k)=>x===0x42&&t[k+1]===parseInt(pid,16));
+    if(i<0){await delay(REQUEST_GAP_MS);continue}
+    const data=freezePayload(t,i,pid);
+    if(!data||!data.length){await delay(REQUEST_GAP_MS);continue}
+    any=true;
+    if(pid==="02"){
+      dtc=(data[0]===0&&data[1]===0)?null:decodeDtcWord(data[0],data[1]);
+      out.push({pid,label:"Kod, który zapisał ramkę",value:dtc||"brak zapisanej ramki",unit:""});
+    }else{
+      const dd=decodePid(pid,data);
+      if(dd)out.push({pid,label:(FREEZE_LABEL[pid]||pid),value:dd.display,unit:dd.unit});
+      else out.push({pid,label:(FREEZE_LABEL[pid]||pid),value:data.map(x=>x.toString(16).padStart(2,"0")).join(" "),unit:"hex"});
+    }
+    await delay(REQUEST_GAP_MS);
+  }
+  if(!any){
+    const opis=odmowy&&!ciche
+      ?'Sterownik odmawia (7F 02 '+(ostatniNrc||"?")+' ×'+odmowy+') mimo zapisanego kodu — ramka może być niedostępna w tym stanie pracy.'
+      :ciche&&!odmowy
+        ?'Zapytania o ramkę pozostały bez odpowiedzi ('+ciche+'×) — problem transportu, spróbuj ponownie.'
+        :'Ramka nieodczytana (odmowy: '+odmowy+', bez odpowiedzi: '+ciche+').';
+    labZapisz("freeze",'<div class="v '+(ciche?'FAIL':'INCONCLUSIVE')+'">'+opis+'</div>',ciche?"brak odpowiedzi":"odmowa sterownika");
+    event("INFO","RAMKA_ZAMROZONA",{wynik:"bez_danych",kody:ileKodow,odmowy,ciche,nrc:ostatniNrc});
+    return;
+  }
+  if(!dtc){
+    labZapisz("freeze",'<div class="v INCONCLUSIVE">Ramka odpowiada, ale bez kodu.</div>',"bez kodu");
+  }else{
+    labZapisz("freeze",'<div class="v PASS">Ramka zapisana przez <b>'+dtc+'</b> — warunki w chwili usterki:</div>'+
+      '<div style="font:12px var(--mono)">'+out.filter(o=>o.pid!=="02").map(o=>
+        '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--line)">'+
+        '<span style="color:var(--dim)">'+o.label+'</span><b>'+o.value+' '+o.unit+'</b></div>').join("")+'</div>',dtc);
+  }
+  const rec={session:sessionId,seq:++seq,ts_wall:wall(),ts_mono:mono(),dtc,fuel_state:fuelState,
+    odometer_km:currentOdometer(),values:out};
+  await dbPut("freeze",rec);
+  event("INFO","RAMKA_ZAMROZONA",{wynik:"odczytana",dtc,pozycji:out.length,kody:ileKodow});
+}
+const FREEZE_LABEL={"03":"Stan układu paliwowego","04":"Obciążenie","05":"Temp. płynu","06":"STFT","07":"LTFT",
+"0B":"MAP","0C":"Obroty","0D":"Prędkość","0E":"Wyprzedzenie zapłonu","0F":"Temp. dolotu","10":"MAF",
+"11":"Przepustnica","1F":"Czas pracy od startu"};
+
+/* ═══════════ ODKRYWANIE IDENTYFIKATORÓW ═══════════
+   Skanujemy zakres 22 <prefiks>00..FF na ECM. Wyłącznie odczyt, wyłącznie na postoju, z limitem tempa.
+   Klasyfikacja: odpowiedź / odmowa / cisza. Odmowa „request out of range" oznacza, że moduł zna tryb 22,
+   ale nie ten identyfikator — czyli skan ma sens i warto szukać dalej. */
+async function discoverDids(prefix){
+  if(!connected||monitoring||autoRunning||listening||inflight||queue.length)return;
+  const rpm=lastSignals.get("powertrain.engine.speed.obd");
+  const found=[],denied=[];let silent=0;
+  $("#discResult").innerHTML='<div class="v INFO">Skanuję 22 '+prefix+'00–'+prefix+'FF… to potrwa około minuty.</div>';
+  for(let i=0;i<256;i++){
+    if(!connected||monitoring)break;
+    const did=prefix+i.toString(16).toUpperCase().padStart(2,"0");
+    const res=await requestVehicle("22"+did,"ECM",600);
+    const st=res.meta&&res.meta.status;
+    if(st==="RESPONSE"){
+      const b=extractDidData(res.text,did);
+      if(b&&b.length)found.push({did,len:b.length,hex:b.slice(0,8).map(x=>x.toString(16).padStart(2,"0")).join(" ")});
+    }else if(st==="NEGATIVE_RESPONSE")denied.push(did);
+    else silent++;
+    if(i%16===0)$("#discResult").innerHTML='<div class="v INFO">Skanuję… '+Math.round(i*100/256)+'% · znalezione: '+found.length+'</div>';
+    await delay(REQUEST_GAP_MS);
+  }
+  const rec={session:sessionId,seq:++seq,ts_wall:wall(),prefix,found,denied_count:denied.length,silent};
+  await dbPut("discovery",rec);
+  labZapisz("disc",found.length
+    ? '<div class="v PASS">Odpowiedziało '+found.length+' identyfikatorów (odmów: '+denied.length+', ciszy: '+silent+'):</div>'+
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font:11px var(--mono)">'+
+      '<tr style="color:var(--dim)"><th align="left">DID</th><th align="left">B</th><th align="left">dane</th></tr>'+
+      found.map(f=>'<tr><td><b>'+f.did+'</b></td><td>'+f.len+'</td><td style="color:var(--dim)">'+f.hex+'</td></tr>').join("")+
+      '</table></div><p style="font-size:11px;color:var(--dim)">Zapisane w sesji. Przy kolejnym skanie porównam wartości — te, które się zmieniają, to czujniki; stałe to dane identyfikacyjne.</p>'
+    : '<div class="v INCONCLUSIVE">Żaden identyfikator z zakresu '+prefix+'xx nie odpowiedział (odmów: '+denied.length+').</div>',
+    prefix+"xx: "+found.length+" znalezionych");
+  event("INFO","ODKRYWANIE_DID",{prefix,znalezione:found.length,odmowy:denied.length});
+}
+
+/* ═══════════ REGUŁY OSTRZEGAWCZE ═══════════
+   Proste i wytłumaczalne, bez uczenia maszynowego. Najważniejsza jest ostatnia: aplikacja musi
+   odróżnić „auto ma problem" od „pomiar jest kiepski", inaczej po pierwszym fałszywym alarmie
+   przestaniesz ufać wszystkim. */
+/* ═══════════ PANEL SILNIKA ═══════════
+   Sześć słupków w jednym rzędzie, skala stała 0–10 /min, żeby dało się porównywać wzrokiem
+   między sesjami. Tempo jest liczbą główną, suma sesji drobną: 112 wypadów przez 40 minut
+   i 112 przez 3 minuty to dwie różne diagnozy. */
+const ENG_SKALA=10, ENG_H=44;
+let engOrd="uklad", engFuel="razem";
+function engMinuty(){
+  if(engFuel==="razem")return sessionStartedMono?Math.max(0.5,(mono()-sessionStartedMono)/60000):1;
+  return Math.max(0.2,misfireMinutes[engFuel]||0.2);
+}
+function engDane(){
+  const src=engFuel==="razem"?misfireTotals:misfireByFuel[engFuel]||misfireTotals;
+  const m=engMinuty();
+  return src.map(v=>v/m);
+}
+function engMediana(a){const t=[...a].sort((x,y)=>x-y);return (t[2]+t[3])/2}
+function engStan(r,med){if(r>2&&r>med*2.2)return "bad";if(r>1.2)return "warn";return "ok"}
+/* Kolejność pozycji w DAB6 JEST kolejnością zapłonu (1-5-3-6-2-4), więc widok „zapłon"
+   pokazuje pozycje po kolei, a widok „układ" sortuje je po fizycznym numerze cylindra. */
+function engKolejnosc(){
+  const poz=[0,1,2,3,4,5];
+  return engOrd==="uklad"?poz.slice().sort((a,b)=>DAB6_NA_CYLINDER[a]-DAB6_NA_CYLINDER[b]):poz;
+}
+function drawEngine(){
+  const box=$("#engPanel"); if(!box)return;
+  const suma=misfireTotals.reduce((a,b)=>a+b,0);
+  box.hidden=!connected||(suma===0&&!monitoring);
+  if(box.hidden)return;
+  const st=$("#engStale"); if(st)st.hidden=!!monitoring;
+  const R=engDane(), med=engMediana(R), src=engFuel==="razem"?misfireTotals:(misfireByFuel[engFuel]||misfireTotals);
+  const kol=engKolejnosc();
+  $("#engBars").innerHTML=kol.map(i=>{
+    const r=R[i], cyl=DAB6_NA_CYLINDER[i];
+    const h=Math.max(2,Math.min(ENG_H,(r/ENG_SKALA)*ENG_H));
+    let slupki='<i style="height:'+h.toFixed(0)+'px"></i>';
+    if(engFuel==="razem"){
+      const rl=(misfireByFuel.LPG[i]||0)/Math.max(0.2,misfireMinutes.LPG||0.2);
+      const rb=(misfireByFuel.BENZYNA[i]||0)/Math.max(0.2,misfireMinutes.BENZYNA||0.2);
+      if(misfireMinutes.LPG>0.3&&misfireMinutes.BENZYNA>0.3){
+        const hb=Math.max(2,Math.min(ENG_H,(rb/ENG_SKALA)*ENG_H));
+        slupki='<i style="height:'+Math.max(2,Math.min(ENG_H,(rl/ENG_SKALA)*ENG_H)).toFixed(0)+'px"></i>'+
+               '<i class="pb" style="height:'+hb.toFixed(0)+'px"></i>';
+      }
+    }
+    return '<div class="bcell" data-s="'+engStan(r,med)+'">'+
+      '<div class="n">'+cyl+'</div><div class="bar2">'+slupki+'</div>'+
+      '<div class="r">'+r.toFixed(1).replace(".",",")+'</div>'+
+      '<div class="s">'+src[i]+'</div></div>';
+  }).join("");
+
+  /* Szyna kolejności zapłonu. Gdy dwa podniesione cylindry SĄSIADUJĄ w zapłonie, odcinek
+     między nimi robi się czerwony — to trop w stronę cewki albo zasilania, nie mechaniki. */
+  const W=340,H=34,poz={};
+  kol.forEach((i,k)=>poz[i]=((k+0.5)/6)*W);
+  const flag=[0,1,2,3,4,5].filter(i=>engStan(R[i],med)!=="ok");
+  let d="";[0,1,2,3,4,5].forEach((i,k)=>{d+=(k?"L":"M")+poz[i].toFixed(1)+" 8"});
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="height:'+H+'px">'+
+    '<path d="'+d+'" stroke="var(--steel)" fill="none" stroke-width="1.5" opacity=".5"/>';
+  for(let k=0;k<5;k++){const a=k,b=k+1;
+    if(flag.includes(a)&&flag.includes(b))
+      svg+='<line x1="'+poz[a]+'" y1="9" x2="'+poz[b]+'" y2="9" stroke="var(--red)" stroke-width="3"/>'}
+  [0,1,2,3,4,5].forEach((i,k)=>{const f=flag.includes(i);
+    svg+='<circle cx="'+poz[i]+'" cy="9" r="'+(f?4.5:3)+'" fill="'+(f?"var(--red)":"var(--steel)")+'"/>'+
+      '<text x="'+poz[i]+'" y="28" text-anchor="middle" font-size="12" font-family="monospace" fill="var(--dim)">'+(k+1)+'</text>'});
+  $("#engRail").innerHTML=svg+'</svg>';
+
+  const lacznie=R.reduce((a,b)=>a+b,0), rozrzut=Math.max(...R)/Math.max(.05,med);
+  const sasiad=flag.length>1&&flag.some((v,k)=>k&&flag[k-1]===v-1);
+  const trop=lacznie<0.5?"praca bez zastrzeżeń"
+    :rozrzut<1.6?"równomiernie — trop: mieszanka"
+    :sasiad?"sąsiadują w zapłonie — trop: cewka lub zasilanie"
+    :"pojedynczy cylinder — trop: dawkowanie, zapłon lub kompresja";
+  $("#engFoot").innerHTML=
+    '<span>Łącznie <b>'+lacznie.toFixed(1).replace(".",",")+'</b> /min</span>'+
+    '<span>Rozrzut <b>×'+(isFinite(rozrzut)?rozrzut.toFixed(1).replace(".",","):"—")+'</b></span>'+
+    '<span>'+(engFuel==="razem"?(fuelState||"paliwo?"):engFuel)+'</span>'+
+    '<span class="hint">'+trop+'</span>';
+}
+
+function checkAnomalies(){
+  const w=[];
+  const total=misfireTotals.reduce((a,b)=>a+b,0);
+  const mins=sessionStartedMono?Math.max(0.5,(mono()-sessionStartedMono)/60000):1;
+  if(total>=20){
+    const top=misfireTotals.indexOf(Math.max(...misfireTotals));
+    const share=misfireTotals[top]*100/total;
+    /* Alert nazywa FIZYCZNY cylinder — misfireTotals indeksowane są pozycją DAB6,
+       czyli kolejnością zapłonu, nie numerem cylindra. */
+    if(share>=50)w.push({lvl:"warn",cel:"engPanel",
+      txt:"Cylinder "+DAB6_NA_CYLINDER[top]+" dominuje — "+share.toFixed(0)+"% wszystkich wypadów",
+      dane:(misfireTotals[top]/mins).toFixed(1).replace(".",",")+" /min przy tempie łącznym "+
+        (total/mins).toFixed(1).replace(".",",")+" /min. Pozycja "+(top+1)+" w DAB6"+
+        (fuelState?" · paliwo "+fuelState:"")+"."});
+  }
+  const rate=total/mins;
+  if(total>=10&&rate>6)w.push({lvl:"warn",cel:"engPanel",txt:"Tempo wypadów "+rate.toFixed(1).replace(".",",")+" /min",
+    dane:"Typowe dla tego auta to 2–3 /min na gazie. "+total+" zdarzeń w "+mins.toFixed(1).replace(".",",")+" min."});
+  const lt=lastSignals.get("powertrain.fuel.trim.long");
+  if(lt&&Math.abs(lt.value)>20)w.push({lvl:"warn",cel:"cards",gdzie:"pokaż w kartach parametrów",
+    txt:"Korekta długoterminowa "+lt.value.toFixed(1).replace(".",",")+"% — poza zakresem roboczym",
+    dane:"Norma ±10%. "+(lt.value<0?"Ujemna: sterownik odejmuje paliwo, mieszanka zbyt bogata."
+      :"Dodatnia: sterownik dodaje paliwo, mieszanka zbyt uboga.")});
+  const cat=lastSignals.get("powertrain.catalyst.temperature");
+  if(cat&&cat.value>850)w.push({lvl:"warn",cel:"cards",gdzie:"pokaż w kartach parametrów",
+    txt:"Temperatura katalizatora "+cat.value.toFixed(0)+" °C",
+    dane:"Powyżej 850 °C niespalone paliwo dopala się w katalizatorze — to droga do jego zniszczenia."});
+  const done=sessionExchangeCount, bad=counters.timeouts+counters.mismatch;
+  if(done>50&&bad*100/done>30)w.push({lvl:"info",txt:"Skuteczność odczytu "+(100-bad*100/done).toFixed(0)+"%",
+    dane:"To problem pomiaru, nie auta: "+counters.timeouts+" przeterminowań na "+done+" wymian."});
+  const el=$("#alerts"); if(!el)return;
+  /* Trzy linie: CO się dzieje, JAKIE dane za tym stoją, DOKĄD to prowadzi. */
+  el.innerHTML=w.map(x=>'<div class="alert'+(x.lvl==="warn"?"":" w")+'" data-cel="'+(x.cel||"")+'">'+
+    '<div class="t">'+x.txt+'</div>'+
+    (x.dane?'<div class="d">'+x.dane+'</div>':"")+
+    (x.cel?'<div class="go">▸ '+(x.gdzie||"pokaż w panelu silnika")+'</div>':"")+'</div>').join("");
+  el.querySelectorAll("[data-cel]").forEach(a=>{const c=a.dataset.cel;if(!c)return;
+    a.onclick=()=>{const t=$("#"+c);if(!t)return;
+      t.scrollIntoView({behavior:"smooth",block:"center"});
+      t.classList.add("flash");setTimeout(()=>t.classList.remove("flash"),1600)}});
+}
+
+/* ═══════════ WYSYŁKA DO REPOZYTORIUM ═══════════
+   Sesje lądują w repo, żeby analiza nie wymagała ręcznego przesyłania plików.
+   ZASADA: token nigdy nie przechodzi przez view(), event() ani dbPut. Nie może się znaleźć
+   w dzienniku ani w eksporcie — to jedyne miejsce w aplikacji, gdzie logowanie jest wyłączone. */
+const REPO_KEY="xc70_repo_cfg";
+function repoCfg(){try{return JSON.parse(localStorage.getItem(REPO_KEY)||"{}")}catch(_){return{}}}
+function saveRepoCfg(c){try{localStorage.setItem(REPO_KEY,JSON.stringify(c))}catch(_){}}
+function repoReady(){const c=repoCfg();return !!(c.token&&c.owner&&c.repo)}
+function b64(str){
+  const bytes=new TextEncoder().encode(str);let bin="";const CH=0x8000;
+  for(let i=0;i<bytes.length;i+=CH)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));
+  return btoa(bin);
+}
+async function ghRequest(path,method,body){
+  const c=repoCfg();
+  const url="https://api.github.com/repos/"+encodeURIComponent(c.owner)+"/"+encodeURIComponent(c.repo)+"/contents/"+path;
+  const res=await fetch(url,{method,headers:{
+    "Authorization":"Bearer "+c.token,"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"
+  },body:body?JSON.stringify(body):undefined});
+  if(res.status===404)return{status:404,data:null};
+  let data=null;try{data=await res.json()}catch(_){}
+  return{status:res.status,data};
+}
+/* Zwraca sha istniejącego pliku albo null. Potrzebne, gdy nadpisujemy (książka serwisowa). */
+async function ghSha(path){
+  try{const r=await ghRequest(path,"GET");return r.status===200&&r.data?r.data.sha:null}catch(_){return null}
+}
+async function ghPut(path,content,message){
+  const c=repoCfg();
+  const body={message,content:b64(content),branch:c.branch||"main"};
+  const sha=await ghSha(path); if(sha)body.sha=sha;
+  const r=await ghRequest(path,"PUT",body);
+  if(r.status>=200&&r.status<300)return{ok:true};
+  const msg=(r.data&&r.data.message)||("HTTP "+r.status);
+  return{ok:false,error:msg};
+}
+/* ═══════════ DZIENNIK SESJI: ŻEBY NIC NIE ZGINĘŁO PRZY ODŚWIEŻENIU ═══════════
+   Dane pomiaru trafiają do IndexedDB od razu, rekord po rekordzie, i nic ich stamtąd nie
+   usuwa — odświeżenie przeglądarki w trakcie jazdy niczego nie kasuje. Ginęła wyłącznie
+   WIEDZA o tym, że coś tam leży: nowa karta zaczynała nową sesję, a stara zostawała bez
+   właściciela. Dziennik zapisuje tę wiedzę co kilka sekund, więc przy następnym otwarciu
+   apka wie, co ma dosłać. */
+const SESSION_BEAT_MS=8000;
+let sessionBeat=null, sessionPushed=false, sessionPushedPath=null, sessionInterrupted=false;
+function snapshotSession(extra){
+  return {id:sessionId,started_wall:sessionStartedWall,last_wall:wall(),
+    duration_ms:sessionStartedMono?Math.round(mono()-sessionStartedMono):0,app_version:APP_VERSION,
+    adapter:{name:device?(device.name||null):null,profile:adapterProfile,service_uuid:serviceUuid},
+    counters:{...counters},fuel_state:fuelState,vin:vehicleVin||null,odometer_km:currentOdometer(),
+    samples:sessionSampleCount,exchanges:sessionExchangeCount,
+    monitoring:!!monitoring,closed:false,pushed:sessionPushed,pushed_path:sessionPushedPath,...(extra||{})};
+}
+/* Pusta sesja (ktoś otworzył apkę i nic nie zmierzył) nie zakłada wpisu — dziennik ma
+   zawierać wyłącznie to, co naprawdę czeka na wysyłkę. */
+function touchSession(extra){
+  if(!db||!sessionId)return Promise.resolve(false);
+  if(!sessionSampleCount&&!sessionExchangeCount)return Promise.resolve(false);
+  return dbSave("sessions",snapshotSession(extra));
+}
+function startSessionBeat(){stopSessionBeat();sessionBeat=setInterval(()=>{touchSession()},SESSION_BEAT_MS)}
+function stopSessionBeat(){if(sessionBeat)clearInterval(sessionBeat);sessionBeat=null}
+/* Buduje treść eksportu. Tryb zwięzły pomija surowe fragmenty transportu — to ~80% objętości,
+   a do analizy potrzebne tylko przy diagnozowaniu samego protokołu.
+   Drugi argument pozwala zbudować plik dla DOWOLNEJ sesji z pamięci, nie tylko bieżącej —
+   bez tego pomiar przerwany odświeżeniem nie miałby z czego dostać nagłówka. */
+async function buildExport(includeChunks,snap){
+  const s=snap||snapshotSession({closed:!monitoring});
+  const sid=s.id;
+  const[chunks,exchanges,samples,events,frames,freeze,disc]=await Promise.all(
+    [includeChunks?dbAllFor("chunk",sid):Promise.resolve([]),dbAllFor("exchange",sid),dbAllFor("sample",sid),dbAllFor("event",sid),dbAllFor("frame",sid),dbAllFor("freeze",sid),dbAllFor("discovery",sid)]);
+  const manifest={record_type:"capture_manifest",schema:"xc70.capture_manifest.v2",session_id:sid,
+    app_version:s.legacy?(s.app_version||null):(s.app_version||APP_VERSION),started_wall:s.started_wall,ended_wall:s.last_wall||wall(),
+    duration_ms:s.duration_ms||0,write_flush_complete:true,
+    adapter:s.adapter||null,
+    scope:{transport:"BLE ELM",policy:"read-only allowlist",endpoints:ENDPOINTS},
+    parser:{framing:"ELM ATH1 CAF1, ISO-TP w aplikacji",correlation:"echo usługi + DID",version:APP_VERSION},
+    counters:s.counters||null,fuel_state_last:s.fuel_state,misfire_mapping:MISFIRE_MAPA,vehicle:{vin:s.vin||null,odometer_km:s.odometer_km??null},
+    recovery:{recovered:sid!==sessionId,interrupted:!!s.interrupted,journal:!s.legacy,
+      note:s.legacy?"sesja sprzed 0.11.0 — stan wysyłki nieznany, plik może być duplikatem":null},
+    records:{chunks:chunks.length,exchanges:exchanges.length,samples:samples.length,events:events.length,frames:frames.length,freeze:freeze.length,discovery:disc.length},
+    privacy:{vin_included:!!s.vin},export_mode:includeChunks?"pełny":"zwięzły"};
+  const lines=[manifest,...chunks.map(x=>({record_type:"transport_chunk",...x})),
+    ...exchanges.map(x=>({record_type:"exchange",...x})),...samples.map(x=>({record_type:"sample",...x})),
+    ...events.map(x=>({record_type:"event",...x})),...frames.map(x=>({record_type:"bus_capture",...x})),...freeze.map(x=>({record_type:"freeze_frame",...x})),...disc.map(x=>({record_type:"did_discovery",...x}))];
+  return lines.map(x=>JSON.stringify(x)).join("\n");
+}
+/* Pomiar zaległy ma trafić do katalogu miesiąca, w którym POWSTAŁ, a nie w którym go dosłano —
+   inaczej sesja z 3 sierpnia dosłana 1 września wylądowałaby we wrześniu. */
+function sessionPath(snap){
+  const s=snap||{id:sessionId,started_wall:sessionStartedWall};
+  const d=(()=>{const t=Date.parse(s.started_wall||"");return isNaN(t)?new Date():new Date(t)})();
+  const yy=d.getFullYear(), mm=String(d.getMonth()+1).padStart(2,"0");
+  /* sessionId powstaje przy starcie, ale nie zakładamy tego — brak identyfikatora nie może
+     wywrócić wysyłki, bo stracilibyśmy dane pomiaru. */
+  const sid=String(s.id||"bezsesji").slice(0,8);
+  const gdy=(s.started_wall||wall()).replace(/[:.]/g,"-");
+  return "sesje/"+yy+"/"+mm+"/xc70_"+sid+"_"+gdy+".jsonl";
+}
+let pushLock=null;
+async function pushSession(includeChunks,snap,status){
+  /* Wysyłki są szeregowane. Dwie równoległe (auto po zatrzymaniu monitora + ręczna) pobierały
+     sha tego samego pliku zanim którakolwiek zapisała — druga kończyła się 422 "Invalid
+     request: sha" (zmierzone 07.08 12:02). Plik i tak był na repo, ale błąd straszył. */
+  while(pushLock)await pushLock;
+  const brama={};pushLock=new Promise(r=>{brama.otworz=r});
+  try{return await pushSessionSerio(includeChunks,snap,status)}
+  finally{brama.otworz();pushLock=null}
+}
+async function pushSessionSerio(includeChunks,snap,status){
+  const say=status||setRepoStatus;
+  if(!repoReady()){say("Najpierw uzupełnij dane repozytorium.","err");return false}
+  say("Przygotowuję eksport…","");
+  if(!await flushWrites()){say("Trwają zapisy do pamięci — spróbuj za chwilę.","err");return false}
+  const s=snap||snapshotSession({closed:!monitoring});
+  const content=await buildExport(includeChunks,s);
+  const kb=Math.round(content.length/1024);
+  say("Wysyłam "+kb+" kB…","");
+  const path=sessionPath(s);
+  const r=await ghPut(path,content,"sesja "+String(s.id).slice(0,8)+" · "+APP_VERSION+" · "+kb+" kB"+(s.id!==sessionId?" · dosłana":""));
+  if(r.ok){
+    say("Wysłano: "+path,"ok");
+    event("INFO","SESJA_WYSLANA",{sesja:s.id,path,rozmiar_kb:kb,tryb:includeChunks?"pełny":"zwięzły",doslana:s.id!==sessionId});
+    if(s.id===sessionId){sessionPushed=true;sessionPushedPath=path;await touchSession()}
+    else await dbSave("sessions",{...s,pushed:true,pushed_path:path,pushed_wall:wall()});
+    return true;
+  }
+  if(/sha/i.test(String(r.error||""))){
+    /* Ktoś (inna karta? poprzednia próba) zapisał plik między naszym odczytem sha a zapisem.
+       Świeży odczyt i jedna ponowna próba załatwiają sprawę. */
+    const r2=await ghPut(path,content,"sesja "+String(s.id).slice(0,8)+" · "+APP_VERSION+" · "+kb+" kB · ponowiona");
+    if(r2.ok){say("Wysłano (2. próba): "+path,"ok");
+      event("INFO","SESJA_WYSLANA",{sesja:s.id,path,rozmiar_kb:kb,tryb:includeChunks?"pełny":"zwięzły",proba:2});
+      if(s.id===sessionId){sessionPushed=true;sessionPushedPath=path;await touchSession()}
+      else await dbSave("sessions",{...s,pushed:true,pushed_path:path,pushed_wall:wall()});
+      return true;}
+  }
+  say("Nie udało się: "+r.error,"err");
+  event("ERROR","WYSYLKA_NIEUDANA",{sesja:s.id,path,powod:r.error});   /* bez tokena */
+  return false;
+}
+/* ═══════════ TRWAŁE WYNIKI TESTÓW ═══════════
+   Wynik testu ma przeżyć zmianę zakładki, uruchomienie innego testu i odświeżenie strony.
+   Dotąd każdy test pisał wyłącznie w innerHTML, a nasłuch, skan modułów i rodzaj paliwa
+   dzieliły JEDNO pole i nadpisywały się nawzajem. */
+const LAB_KEY="xc70_lab_wyniki";
+const LAB_POLA={mon:["monResult","stampMon","lastMon"],press:["pressResult","stampPress","lastPress"],
+  freeze:["freezeResult","stampFreeze","lastFreeze"],fuelType:["fuelTypeResult","stampFuelType","lastFuelType"],
+  listen:["listenResult","stampListen",null],disc:["discResult","stampDisc",null]};
+function labWczytaj(){try{return JSON.parse(localStorage.getItem(LAB_KEY)||"{}")}catch(_){return{}}}
+function labZapisz(id,html,skrot){
+  const w=labWczytaj();
+  w[id]={html,skrot:skrot||null,kiedy:wall()};
+  try{localStorage.setItem(LAB_KEY,JSON.stringify(w))}catch(_){}
+  labPokaz(id,w[id]);
+}
+function labPokaz(id,rec){
+  const pola=LAB_POLA[id];if(!pola||!rec)return;
+  const[wynik,stamp,ostatnio]=pola;
+  const a=$("#"+wynik);if(a)a.innerHTML=rec.html;
+  const b=$("#"+stamp);if(b)b.textContent=rec.kiedy?String(rec.kiedy).slice(5,16).replace("T"," "):"—";
+  if(ostatnio){const c=$("#"+ostatnio);if(c)c.textContent=rec.skrot||"—"}
+}
+function labTrwa(id){
+  const pola=LAB_POLA[id];if(!pola)return;
+  const b=$("#"+pola[1]);if(b)b.textContent="TRWA…";
+}
+function labOdtworz(){const w=labWczytaj();for(const id of Object.keys(LAB_POLA))if(w[id])labPokaz(id,w[id])}
+
+function setRepoStatus(text,kind){
+  const el=$("#repoStatus"); if(!el)return;
+  el.textContent=text; el.className="v "+(kind==="ok"?"PASS":kind==="err"?"FAIL":"INFO");
+}
+function setPendingStatus(text,kind){
+  const el=$("#pendingStatus"); if(!el)return;
+  el.textContent=text; el.className="v "+(kind==="ok"?"PASS":kind==="err"?"FAIL":"INFO");
+}
+
+/* ═══════════ ODZYSKIWANIE ZALEGŁYCH POMIARÓW ═══════════
+   Dwa źródła. Pierwsze to dziennik sesji — wiemy o nich wszystko i wiemy, że nie zostały
+   wysłane, więc można je dosłać bez pytania. Drugie to sesje sprzed 0.11.0, które leżą
+   w pamięci bez wpisu w dzienniku: mogą już być na repozytorium, więc NIGDY nie idą
+   automatycznie — decyzja należy do użytkownika, a ewentualny duplikat rozpoznam po
+   session_id w manifeście. */
+let pendingList=[], pendingBusy=false;
+async function scanPending(){
+  if(!db)return[];
+  const wszystkie=(await dbAllAny("sessions")).filter(r=>r&&r.id&&r.id!==sessionId);
+  const rows=wszystkie.filter(r=>!r.pushed);
+  /* known MUSI obejmować także sesje już wysłane — inaczej ich dane, które wciąż leżą
+     w bazie, wyglądają jak pomiar sprzed 0.11.0 i idą na repozytorium DRUGI raz pod
+     ścieżką odtworzoną ze zdarzeń. Zmierzone: 10 par duplikatów różniących się
+     milisekundami w nazwie (07.08). */
+  const known=new Set(wszystkie.map(r=>r.id));
+  for(const store of ["sample","exchange"]){
+    for(const sid of await distinctSessions(store)){
+      if(sid===sessionId||known.has(sid))continue;
+      known.add(sid);
+      rows.push({id:sid,legacy:true,started_wall:null,pushed:false});
+    }
+  }
+  const out=[];
+  for(const r of rows){
+    const samples=await dbCountFor("sample",r.id), exchanges=await dbCountFor("exchange",r.id);
+    if(!samples&&!exchanges)continue;                 /* wpis bez danych: nie ma czego słać */
+    let started=r.started_wall, ended=r.last_wall, dur=r.duration_ms, ver=r.app_version, fuel=r.fuel_state;
+    if(r.legacy){
+      /* Sesja bez wpisu w dzienniku. Wszystko, co o niej wiemy, jest w jej własnych rekordach —
+         i tylko to wolno nam wpisać do nagłówka. Wcześniej dostawała wersję aplikacji, która ją
+         DOSYŁAŁA, oraz czas trwania 0, co fałszowało historię pomiarów. */
+      const ev=await dbAllFor("event",r.id);
+      if(ev.length){
+        started=ev[0].ts_wall;ended=ev[ev.length-1].ts_wall;
+        dur=Math.max(0,Math.round((ev[ev.length-1].ts_mono||0)-(ev[0].ts_mono||0)));
+        const v=ev.map(e=>String(e.text||"").match(/Data Console (\d+\.\d+\.\d+)/)).find(Boolean);
+        ver=v?v[1]:null;
+        const f=ev.map(e=>String(e.text||"").match(/^FUEL_STATE (\w+)/)).filter(Boolean).pop();
+        fuel=f?f[1]:null;
+      }else{ver=null;dur=null}
+    }
+    out.push({...r,samples,exchanges,started_wall:started||null,last_wall:ended||started||null,
+      duration_ms:dur??null,app_version:ver??null,fuel_state:fuel??null,interrupted:!r.closed});
+  }
+  return out.sort((a,b)=>String(a.started_wall).localeCompare(String(b.started_wall)));
+}
+/* Wiersz na sesję: co to jest, ile waży, i dwa działania. Usunięcie wymaga potwierdzenia,
+   bo dla pomiaru, który nie trafił na repozytorium, to JEDYNA kopia danych. */
+async function renderPendingList(){
+  const el=$("#pendingList"); if(!el)return;
+  if(!pendingList.length){el.innerHTML='<div class="empty-state">Kolejka pusta.</div>';return}
+  el.innerHTML=pendingList.map((p,i)=>{
+    const kiedy=p.started_wall?String(p.started_wall).slice(0,16).replace("T"," "):"nieznana data";
+    const skad=p.legacy?"sprzed 0.11.0 — mógł już być wysłany":"przerwany, niewysłany";
+    return '<div class="qrow"><span class="qi">'+kiedy+
+      '<small>'+String(p.id).slice(0,8)+' · '+p.samples+' próbek · '+skad+'</small></span>'+
+      '<button class="act" data-wyslij="'+i+'">Wyślij</button>'+
+      '<button class="danger" data-usun="'+i+'">Usuń</button></div>';
+  }).join("");
+  el.querySelectorAll("[data-wyslij]").forEach(b=>b.onclick=()=>wyslijJedna(+b.dataset.wyslij));
+  el.querySelectorAll("[data-usun]").forEach(b=>b.onclick=()=>usunJedna(+b.dataset.usun));
+}
+async function wyslijJedna(i){
+  const p=pendingList[i]; if(!p||pendingBusy)return;
+  pendingBusy=true;refresh();
+  setPendingStatus("Wysyłam pomiar z "+(p.started_wall?String(p.started_wall).slice(0,16).replace("T"," "):"nieznanej daty")+"…","");
+  let ok=false;
+  try{ok=await pushSession(!!repoCfg().chunks,p,setPendingStatus)}
+  catch(err){setPendingStatus("Błąd wysyłki: "+String(err&&err.message||err),"err")}
+  if(ok)await freeSession(p.id);
+  pendingBusy=false;
+  pendingList=await scanPending();renderPending();await renderPendingList();refresh();
+}
+async function usunJedna(i){
+  const p=pendingList[i]; if(!p||pendingBusy)return;
+  const kiedy=p.started_wall?String(p.started_wall).slice(0,16).replace("T"," "):"nieznana data";
+  const tak=await potwierdz("Usunąć ten pomiar?",
+    "<b>"+kiedy+"</b> · "+p.samples+" próbek<br><br>"+
+    (p.legacy
+      ? "Ten pomiar pochodzi sprzed 0.11.0 i <b>mógł już trafić na repozytorium</b> — ale nie mam na to potwierdzenia."
+      : "Ten pomiar <b>nie został wysłany na repozytorium</b>. To jedyna kopia tych danych.")+
+    "<br><br>Usunięcia nie da się cofnąć.","Tak, usuń bezpowrotnie");
+  if(!tak)return;
+  const n=await freeSession(p.id);
+  await dbSave("sessions",{...p,pushed:true,usuniety_recznie:wall()});
+  event("INFO","ZALEGLA_USUNIETA_RECZNIE",{sesja:p.id,rekordow:n,probek:p.samples});
+  setPendingStatus("Usunięto pomiar z "+kiedy+" ("+n+" rekordów).","");
+  pendingList=await scanPending();renderPending();await renderPendingList();
+}
+function renderPending(){
+  const box=$("#pending"); if(!box)return;
+  if(!pendingList.length){box.hidden=true;return}
+  const auto=pendingList.filter(p=>!p.legacy), old=pendingList.filter(p=>p.legacy);
+  const smp=pendingList.reduce((a,b)=>a+b.samples,0);
+  $("#pendingCount").textContent=pendingList.length+" "+(pendingList.length===1?"sesja":"sesje")+" · "+smp.toLocaleString("pl-PL")+" próbek";
+  const kiedy=p=>p.started_wall?String(p.started_wall).slice(0,16).replace("T"," "):"nieznana data";
+  let note="";
+  if(auto.length)note+="Przerwane pomiary czekające na wysyłkę: "+auto.map(p=>kiedy(p)+" ("+p.samples+" próbek)").join(", ")+". ";
+  if(old.length)note+=(auto.length?"Poza tym w":"W")+" pamięci leżą pomiary sprzed 0.11.0: "+
+    old.map(p=>kiedy(p)+" ("+p.samples+" próbek)").join(", ")+
+    " — mogły już trafić na repozytorium, więc same nie pójdą. Duplikat rozpoznam po identyfikatorze sesji.";
+  $("#pendingNote").textContent=note;
+  box.hidden=false;
+}
+/* Zwalniamy miejsce dopiero po POTWIERDZONEJ wysyłce (HTTP 2xx) i nigdy dla sesji bieżącej.
+   Bez tego pamięć telefonu rośnie bez końca, a pełna pamięć to kolejny sposób na utratę danych. */
+async function freeSession(sid){
+  if(!sid||sid===sessionId)return 0;
+  let n=0;
+  for(const store of DATA_STORES)n+=await dbDropSession(store,sid);
+  event("INFO","ZWOLNIONO_PAMIEC",{sesja:sid,rekordow:n});
+  return n;
+}
+async function pushPending(includeLegacy){
+  if(pendingBusy)return;
+  pendingBusy=true;refresh();
+  const todo=pendingList.filter(p=>includeLegacy||!p.legacy);
+  let done=0,failed=0,freed=0;
+  for(const p of todo){
+    setPendingStatus("Wysyłam pomiar z "+(p.started_wall?String(p.started_wall).slice(0,16).replace("T"," "):"nieznanej daty")+"…","");
+    let ok=false;
+    try{ok=await pushSession(!!repoCfg().chunks,p,setPendingStatus)}catch(err){setPendingStatus("Błąd wysyłki: "+String(err&&err.message||err),"err")}
+    if(ok){done++;freed+=await freeSession(p.id)}else failed++;
+  }
+  pendingBusy=false;
+  pendingList=await scanPending();
+  renderPending();
+  setPendingStatus(done?("Dosłano "+done+" "+(done===1?"pomiar":"pomiary")+(freed?", zwolniono "+freed.toLocaleString("pl-PL")+" rekordów":"")+(failed?", nieudanych: "+failed:"")):"Nic nie zostało wysłane.",done&&!failed?"ok":failed?"err":"");
+  refresh();
+}
+/* Uruchamiane raz, przy starcie. Automatycznie idą tylko sesje z dziennika — te na pewno
+   nie były wysłane. Reszta czeka na kliknięcie. */
+async function recoverOnStart(){
+  /* Sesja, która wysłała się sama na końcu pomiaru, nie zwalniała swoich danych — robiło to
+     tylko dosyłanie zaległych. Dane rosły w bazie bez końca i przy okazji karmiły błąd
+     duplikatów. Dziennik z pushed=true to potwierdzenie HTTP 2xx, więc zwolnienie jest
+     bezpieczne. Książki serwisowej to nie dotyka. */
+  try{
+    const wyslane=(await dbAllAny("sessions")).filter(r=>r&&r.id&&r.id!==sessionId&&r.pushed);
+    for(const w of wyslane){
+      if(await dbCountFor("sample",w.id)>0||await dbCountFor("exchange",w.id)>0)
+        await freeSession(w.id);
+    }
+  }catch(err){event("ERROR","PORZADKI_NIEUDANE",{powod:String(err&&err.message||err)})}
+  pendingList=await scanPending();
+  if(!pendingList.length)return;
+  const auto=pendingList.filter(p=>!p.legacy);
+  event("INFO","ZALEGLE_POMIARY",{razem:pendingList.length,z_dziennika:auto.length,
+    sprzed_0_11:pendingList.length-auto.length,probek:pendingList.reduce((a,b)=>a+b.samples,0)});
+  renderPending();
+  if(auto.length&&repoReady()&&repoCfg().auto!==false){
+    setPendingStatus("Znalazłem "+auto.length+" niewysłany pomiar — dosyłam…","");
+    await pushPending(false);
+  }
+}
+
+/* ═══════════ KSIĄŻKA SERWISOWA ═══════════
+   Przebieg liczymy z PID 31 (dystans od skasowania kodów) plus jednorazowe zakotwiczenie
+   rzeczywistym wskazaniem licznika. PID 31 zeruje się przy kasowaniu kodów — wykrywamy to
+   po spadku wartości i prosimy o nowe zakotwiczenie, zamiast po cichu podawać zły przebieg. */
+const ODO_KEY="xc70_odo_anchor";
+let vehicleVin=null;
+function odoAnchor(){try{return JSON.parse(localStorage.getItem(ODO_KEY)||"null")}catch(_){return null}}
+function setOdoAnchor(odoKm,pid31){localStorage.setItem(ODO_KEY,JSON.stringify({odoKm,pid31,seenMax:pid31,ts:wall()}))}
+function lastPid31(){const s=lastSignals.get("vehicle.distance.since_clear");return s?s.value:null}
+/* Porównanie z samym zakotwiczeniem nie wystarczało. Gdy ktoś skasował kody DRUGI raz,
+   a auto zdążyło przejechać więcej niż wynosiło zakotwiczenie, PID 31 spadał, ale wciąż
+   był od niego wyższy — kontrola milczała, a przebieg cofał się w książce serwisowej.
+   Zapamiętujemy więc NAJWYŻSZĄ dotąd widzianą wartość i porównujemy z nią. */
+function noteOdoReading(){
+  const a=odoAnchor(), d=lastPid31();
+  if(!a||d==null)return;
+  const seen=a.seenMax!=null?a.seenMax:a.pid31;
+  if(d>seen){a.seenMax=d;a.bestKm=Math.round(a.odoKm+(d-a.pid31));try{localStorage.setItem(ODO_KEY,JSON.stringify(a))}catch(_){}}
+}
+/* Ile kilometrów PID 31 może spaść, zanim uznamy to za skasowanie kodów. Sam licznik
+   jest całkowity i nie maleje, więc 1 km zapasu wystarcza na zaokrąglenia. */
+const ODO_DROP_TOL=1;
+function odoReset(){
+  const a=odoAnchor(), d=lastPid31();
+  if(!a||d==null)return null;
+  const seen=a.seenMax!=null?a.seenMax:a.pid31;
+  if(d>=seen-ODO_DROP_TOL)return null;
+  /* Znamy przebieg z ostatniego dobrego odczytu i ile auto przejechało od skasowania.
+     Nie wiemy tylko, ile przejechało MIĘDZY tymi zdarzeniami — stąd „co najmniej". */
+  const best=a.bestKm!=null?a.bestKm:Math.round(a.odoKm+(seen-a.pid31));
+  return {seen,now:d,atLeast:best+d};
+}
+function currentOdometer(){
+  const a=odoAnchor(), d=lastPid31();
+  if(!a)return null;
+  if(d==null)return a.odoKm;
+  if(d<a.pid31)return null;             /* licznik zerowany — zakotwiczenie nieważne */
+  if(odoReset())return null;            /* kody skasowane ponownie — wskazanie byłoby zaniżone */
+  return Math.round(a.odoKm+(d-a.pid31));
+}
+function odometerNote(){
+  const a=odoAnchor(), d=lastPid31();
+  if(!a)return "brak zakotwiczenia — wpisz wskazanie licznika";
+  if(d==null)return "zakotwiczone na "+a.odoKm+" km; czekam na odczyt PID 31";
+  if(d<a.pid31)return "PID 31 spadł ("+d+" < "+a.pid31+") — kody zostały skasowane, potrzebne nowe zakotwiczenie";
+  const rst=odoReset();
+  if(rst)return "PID 31 spadł ze "+rst.seen+" na "+rst.now+" km — ktoś skasował kody. Przebieg to co najmniej "+
+    rst.atLeast.toLocaleString("pl-PL")+" km; zakotwicz ponownie wskazaniem z deski";
+  return "z zakotwiczenia "+a.odoKm+" km + "+Math.round(d-a.pid31)+" km od tego czasu";
+}
+/* VIN nie zawiera liter I, O ani Q — właśnie po to, żeby nie mylić ich z 1 i 0.
+   Wykorzystujemy to jako sprawdzian: 17 znaków ze zredukowanego alfabetu albo nic. */
+const VIN_KEY="xc70_vin";
+function normalizeVin(raw){
+  const v=String(raw||"").toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,"");
+  return /^[A-HJ-NPR-Z0-9]{17}$/.test(v)?v:null;
+}
+/* VIN przetrwa odświeżenie strony — inaczej każdy wpis serwisowy po restarcie byłby bez auta. */
+function loadVin(){try{vehicleVin=normalizeVin(localStorage.getItem(VIN_KEY))}catch(_){vehicleVin=null}return vehicleVin}
+function saveVin(v){const n=normalizeVin(v);vehicleVin=n;try{if(n)localStorage.setItem(VIN_KEY,n);else localStorage.removeItem(VIN_KEY)}catch(_){}return n}
+/* Odpowiedź 49 02 niesie najpierw licznik pozycji (0x01), potem 17 znaków ASCII.
+   Bajty spoza zakresu drukowalnego (licznik, dopełnienie 0x00) odsiewamy, więc parser
+   działa i wtedy, gdy sterownik licznika nie wysyła. */
+function vinFromResponse(text){
+  const raw=(text||"").toUpperCase().replace(/[^0-9A-F]+/g," ").trim();
+  let t=raw.split(/\s+/).filter(x=>/^[0-9A-F]{2}$/.test(x));
+  /* Zapas na wypadek ATS0: adapter sklejałby bajty w jeden ciąg. Nasz profil zawsze wysyła
+     ATS1, ale format wyjścia ELM-a zaskoczył nas już dwa razy — parser ma być odporny. */
+  if(t.length<4){const glued=raw.replace(/\s/g,"");if(glued.length>=6&&glued.length%2===0)t=glued.match(/../g)||[]}
+  const i=t.findIndex((x,k)=>x==="49"&&t[k+1]==="02");
+  if(i<0)return null;
+  const chars=t.slice(i+2).map(x=>parseInt(x,16)).filter(c=>c>=0x30&&c<=0x5A);
+  return normalizeVin(String.fromCharCode(...chars));
+}
+/* Zwraca {vin} albo {error} z powodem. Ciche zwracanie null sprawiało, że przycisk wyglądał
+   na zepsuty: użytkownik klikał przy pracującym monitorze i nie dostawał żadnej informacji.
+   Sama transmisja też zawodziła — 1,5 s bywało za mało na odpowiedź wieloramkową, a adres
+   rozmówcy nie był przed zapytaniem przywracany. Teraz: wymuszony adres, pełny limit czasu,
+   trzy podejścia i — gdy nadal nic — sprawdzenie trybem 09 PID 00, czy sterownik w ogóle
+   obsługuje ten tryb. Surowa odpowiedź trafia do dziennika, żeby dało się to potem zbadać. */
+async function readVin(){
+  if(!connected)return{error:"Najpierw połącz się z autem."};
+  if(monitoring)return{error:"Zatrzymaj monitor — odczyt VIN potrzebuje wolnej magistrali."};
+  if(autoRunning)return{error:"Trwa diagnostyka startowa, poczekaj chwilę."};
+  if(listening)return{error:"Trwa nasłuch magistrali."};
+  if(inflight||queue.length||drain||settle)return{error:"Transport zajęty, spróbuj za moment."};
+  resetIsoTp();
+  await runCommands(endpointCommands("7E0","7E8"));
+  let last=null;
+  for(let n=1;n<=3;n++){
+    if(!connected)return{error:"Połączenie przerwane w trakcie odczytu."};
+    last=await requestVehicle("0902",null,DEFAULT_TIMEOUT);
+    event("INFO","VIN_PROBA_"+n,{status:last.status,raw:(last.text||"").slice(0,160)});
+    const vin=vinFromResponse(last.text);
+    if(vin){saveVin(vin);event("INFO","VIN_ODCZYTANY",{vin});return{vin}}
+    await delay(300);
+  }
+  const t=(last&&last.text||"").toUpperCase();
+  if(t.includes("4902")||t.includes("49 02"))
+    return{error:"Sterownik odpowiedział, ale VIN wyszedł niekompletny. Podgląd: "+(last.text||"").slice(0,40)+" — wpisz VIN ręcznie poniżej."};
+  const probe=await requestVehicle("0900",null,DEFAULT_TIMEOUT);
+  if(probe.correlation&&probe.correlation.pass)
+    return{error:"Tryb 09 działa, ale sterownik nie oddał VIN-u ("+String(last&&last.status)+"). Wpisz VIN ręcznie poniżej."};
+  return{error:"Sterownik nie odpowiedział na zapytanie o VIN ("+String(last&&last.status)+"). Sprawdź zapłon i spróbuj ponownie albo wpisz VIN ręcznie."};
+}
+async function addServiceEntry(){
+  const km=currentOdometer();
+  const entry={
+    session:sessionId,seq:++seq,id:uuid(),ts_wall:wall(),
+    odometer_km:km,odometer_source:km!=null?"auto (PID 31 + zakotwiczenie)":"brak",
+    category:$("#svcCat").value, description:($("#svcDesc").value||"").trim(),
+    cost:($("#svcCost").value||"").trim(), vin:vehicleVin||null, app_version:APP_VERSION
+  };
+  if(!entry.description){setSvcStatus("Opis nie może być pusty.","err");return}
+  await dbPut("service",entry);
+  $("#svcDesc").value="";$("#svcCost").value="";
+  await renderService();
+  setSvcStatus("Zapisano lokalnie."+(repoReady()?" Wysyłam do repo…":""),"ok");
+  if(repoReady())await pushServiceBook();
+}
+async function pushServiceBook(){
+  if(!repoReady()){setSvcStatus("Brak konfiguracji repozytorium.","err");return}
+  const all=await dbAllAny("service");
+  const doc={schema:"xc70.ksiazka_serwisowa.v1",vin:vehicleVin||null,updated:wall(),
+    entries:all.sort((a,b)=>String(a.ts_wall).localeCompare(String(b.ts_wall)))};
+  const r=await ghPut("serwis/ksiazka.json",JSON.stringify(doc,null,2),"książka serwisowa · "+all.length+" wpisów");
+  setSvcStatus(r.ok?("Wysłano do repo ("+all.length+" wpisów).") : ("Wysyłka nieudana: "+r.error), r.ok?"ok":"err");
+}
+/* Wpisy serwisowe muszą przetrwać zmianę sesji, więc czytamy CAŁY magazyn, nie tylko bieżącą sesję. */
+function dbAllAny(store){return new Promise(resolve=>{if(!db)return resolve([]);try{
+  const req=db.transaction(store,"readonly").objectStore(store).getAll();
+  req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>resolve([])}catch(_){resolve([])}})}
+function setSvcStatus(t,k){const el=$("#svcStatus");if(!el)return;el.textContent=t;el.className="v "+(k==="ok"?"PASS":k==="err"?"FAIL":"INFO")}
+async function renderService(){
+  const el=$("#svcList"); if(!el)return;
+  const all=(await dbAllAny("service")).sort((a,b)=>String(b.ts_wall).localeCompare(String(a.ts_wall)));
+  $("#odoNote").textContent=odometerNote();
+  const cur=currentOdometer();
+  $("#odoNow").textContent=cur!=null?(cur.toLocaleString("pl-PL")+" km"):"—";
+  el.innerHTML=all.length?'<div class="log">'+all.slice(0,12).map(e=>
+    '<div class="li"><span class="km">'+(e.odometer_km!=null?e.odometer_km.toLocaleString("pl-PL"):"—")+'</span>'+
+    '<span class="d">'+String(e.description).replace(/[<>]/g,"")+
+    '<small>'+String(e.category)+' · '+String(e.ts_wall).slice(0,10)+'</small></span>'+
+    '<span class="c">'+(e.cost?String(e.cost).replace(/[<>]/g,""):"")+'</span></div>').join("")+'</div>'
+    : '<div class="empty-state">Brak wpisów. Dodaj pierwszy powyżej.</div>';
+}
+/* Statystyki mówią ILE. Podsumowanie mówi CO Z TEGO WYNIKA — zdaniami, nie liczbami. */
+function renderPodsumowanie(){
+  const el=$("#sesSummary"); if(!el)return;
+  if(!sessionSampleCount){el.innerHTML='<span class="eyebrow" style="text-transform:none;letter-spacing:0">Sesja jeszcze nic nie zmierzyła.</span>';return}
+  const mins=sessionStartedMono?Math.max(0.1,(mono()-sessionStartedMono)/60000):1;
+  const z=[];
+  const tmp=lastSignals.get("powertrain.coolant.temperature");
+  if(tmp)z.push(tmp.value>=85?"Silnik osiągnął temperaturę roboczą ("+tmp.value.toFixed(0)+" °C).":
+    "Silnik jeszcze się grzeje — "+tmp.value.toFixed(0)+" °C, wyniki wypadów będą zawyżone.");
+  const suma=misfireTotals.reduce((a,b)=>a+b,0);
+  if(suma>0){
+    const top=misfireTotals.indexOf(Math.max(...misfireTotals));
+    z.push("Wypady zapłonu: <b>"+(suma/mins).toFixed(1).replace(".",",")+" /min</b>, z czego cylinder <b>"+
+      DAB6_NA_CYLINDER[top]+"</b> odpowiada za "+(misfireTotals[top]*100/suma).toFixed(0)+"%.");
+    if(misfireMinutes.LPG>0.5&&misfireMinutes.BENZYNA>0.5){
+      const rl=misfireByFuel.LPG.reduce((a,b)=>a+b,0)/misfireMinutes.LPG;
+      const rb=misfireByFuel.BENZYNA.reduce((a,b)=>a+b,0)/misfireMinutes.BENZYNA;
+      z.push("Na gazie <b>"+rl.toFixed(1).replace(".",",")+" /min</b>, na benzynie <b>"+
+        rb.toFixed(1).replace(".",",")+" /min</b> — "+(rl>rb*1.5?"zdecydowanie gorzej na gazie":
+        rb>rl*1.5?"zdecydowanie gorzej na benzynie":"podobnie na obu paliwach")+".");
+    }
+  } else z.push("Nie zarejestrowano wypadów zapłonu.");
+  const lt=lastSignals.get("powertrain.fuel.trim.long");
+  if(lt)z.push("Korekta długoterminowa "+lt.value.toFixed(1).replace(".",",")+"% — "+
+    (Math.abs(lt.value)>10?"poza normą ±10%":"w normie")+".");
+  el.innerHTML=z.join(" ");
+}
+
+/* ─────────── SKŁADANIE ISO-TP Z SUROWYCH RAMEK ───────────
+   Z ATH1+ATCAF0 adapter wypisuje kazda ramke CAN osobno, z identyfikatorem nadawcy:
+       7E8 10 0F 62 DA B6 00 03 00     <- pierwsza (dlugosc 0x00F)
+       7E8 21 00 00 10 00 00 00 01     <- kolejna
+   Skladamy sami, zamiast ufac automatyce ELM. Dzieki identyfikatorowi wiemy, ktora ramka
+   nalezy do naszego rozmowcy, a ktora jest odpowiedzia dla innego pytajacego na magistrali. */
+let isotp={};
+function resetIsoTp(){isotp={}}
+function parseCanLine(line){
+  const t=String(line||"").trim().toUpperCase();
+  if(!t)return null;
+  const parts=t.split(/\s+/).filter(Boolean);
+  if(parts.length<2)return null;
+  const id=parts[0];
+  if(!/^[0-9A-F]{3}$/.test(id)&&!/^[0-9A-F]{8}$/.test(id))return null;
+  const bytes=[];
+  for(const x of parts.slice(1)){if(!/^[0-9A-F]{2}$/.test(x))return null;bytes.push(parseInt(x,16))}
+  return bytes.length?{id,bytes}:null;
+}
+/* Zwraca kompletny komunikat {id,data} albo null, gdy jeszcze nie zebrany. */
+function feedIsoTp(id,b){
+  const type=b[0]>>4;
+  if(type===0){const len=b[0]&0x0F;return len?{id,data:b.slice(1,1+len)}:null}
+  if(type===1){const len=((b[0]&0x0F)<<8)|b[1];const st={need:len,data:b.slice(2)};isotp[id]=st;
+    if(st.data.length>=len){delete isotp[id];return{id,data:st.data.slice(0,len)}}return null}
+  if(type===2){const st=isotp[id];if(!st)return null;st.data=st.data.concat(b.slice(1));
+    if(st.data.length>=st.need){delete isotp[id];return{id,data:st.data.slice(0,st.need)}}return null}
+  return null;
+}
+/* Czy zlozony komunikat jest odpowiedzia na nasze zadanie? */
+function messageMatches(cmd,data){
+  const c=String(cmd||"").replace(/\s/g,"").toUpperCase();
+  if(!data||!data.length)return false;
+  const svc=data[0];
+  if(c.startsWith("22"))return svc===0x62&&data[1]===parseInt(c.slice(2,4),16)&&data[2]===parseInt(c.slice(4,6),16);
+  if(c.startsWith("01"))return svc===0x41;
+  if(c.startsWith("02"))return svc===0x42;
+  if(c.startsWith("09"))return svc===0x49;
+  if(c==="03")return svc===0x43;
+  if(c==="07")return svc===0x47;
+  if(c.startsWith("06"))return svc===0x46;
+  if(c.startsWith("3E"))return svc===0x7E;
+  return false;
+}
+function isNegativeFor(cmd,data){
+  const c=String(cmd||"").replace(/\s/g,"").toUpperCase();
+  return data&&data.length>=2&&data[0]===0x7F&&data[1]===parseInt(c.slice(0,2),16);
+}
+function hexOf(data){return data.map(x=>x.toString(16).toUpperCase().padStart(2,"0")).join(" ")}
+
+/* ─────────── NASŁUCH PASYWNY ───────────
+   ATMA to tryb wyłącznie odbiorczy — adapter NIC nie wysyła na magistralę, więc nie konkuruje
+   ze sterownikiem LPG o czas (to on odbiera nam ~50% odczytów w trybie zapytań).
+   Strumienia nie da się opisać modelem żądanie↔odpowiedź, więc omija kolejkę — ale komenda
+   i tak przechodzi przez commandPolicy, żeby allowlista pozostała jedynym źródłem prawdy. */
+function parseFrames(text){
+  const out=[];
+  for(const line of String(text||"").split(/[\r\n]+/)){
+    const t=line.trim().toUpperCase();
+    if(!t||/^(OK|ELM|SEARCHING|STOPPED|BUFFER|NO DATA|CAN ERROR|BUS|\?|>)/.test(t))continue;
+    const parts=t.replace(/>/g," ").split(/\s+/).filter(Boolean);
+    if(parts.length<2)continue;
+    const id=parts[0];
+    if(!/^[0-9A-F]{3}$/.test(id)&&!/^[0-9A-F]{8}$/.test(id))continue;
+    const data=parts.slice(1).filter(x=>/^[0-9A-F]{2}$/.test(x));
+    if(!data.length)continue;
+    out.push({id,data});
+  }
+  return out;
+}
+async function listenBus(seconds){
+  if(!connected||monitoring||autoRunning||listening||inflight||queue.length)return;
+  const pol=commandPolicy("ATMA");
+  if(!pol.allowed){counters.rejected++;event("ERROR","COMMAND_REJECTED: ATMA",{reason:"read_only_allowlist"});return}
+  $("#listenResult").innerHTML='<div class="v INFO">Konfiguruję adapter…</div>';
+  /* nagłówki ON (bez nich nie wiemy, z jakiego modułu ramka), formatowanie OFF, filtr zdjęty */
+  const setup=await runCommands(["ATE0","ATL0","ATS1","ATH1","ATCAF0","ATSP6","ATCRA"]);
+  if(setup.some(x=>x.status==="DISCONNECTED")){$("#listenResult").innerHTML='<div class="v FAIL">Rozłączono</div>';return}
+  listening=true;listenBuf="";refresh();
+  event("INFO","NASŁUCH start",{seconds,tryb:"ATMA (wyłącznie odbiór)"});
+  $("#listenResult").innerHTML='<div class="v INFO">Nasłuchuję '+seconds+' s…</div>';
+  const t0=mono();
+  try{
+    await writeBytes("ATMA\r",0);
+    await delay(seconds*1000);
+    await writeBytes("\r",0);          /* dowolny znak przerywa monitorowanie */
+    await delay(400);
+  }catch(err){event("ERROR","NASŁUCH błąd zapisu",{detail:String(err&&err.message||err)})}
+  const raw=listenBuf;listenBuf="";listening=false;
+  const frames=parseFrames(raw);
+  const dur=(mono()-t0)/1000;
+  const byId={};
+  for(const f of frames){const g=byId[f.id]||(byId[f.id]={n:0,len:f.data.length,first:f.data.join(" "),last:""});g.n++;g.last=f.data.join(" ")}
+  const capture={session:sessionId,seq:++seq,ts_wall:wall(),ts_mono:mono(),duration_s:+dur.toFixed(1),
+    fuel_state:fuelState,frame_count:frames.length,unique_ids:Object.keys(byId).length,
+    buffer_full:/BUFFER FULL/i.test(raw),
+    ids:Object.entries(byId).map(([id,g])=>({id,n:g.n,bytes:g.len,first:g.first,last:g.last})),
+    frames:frames.map(f=>({id:f.id,d:f.data.join(" ")}))};
+  await dbPut("frame",capture);
+  /* ATH1, NIE ATH0 — zostałość po torze sprzed 0.8.2. Bez nagłówków linia odpowiedzi nie ma
+     identyfikatora nadawcy, parser ramek odrzuca wszystko i każde zapytanie kończy się
+     przeterminowaniem. Zmierzone na sesji z 05.08: 98,8% skuteczności przed nasłuchem,
+     35,7% po nim. Przywracamy też sterowanie przepływem, którego ta linijka nie ruszała. */
+  await runCommands(["ATH1","ATCAF1"].concat(endpointCommands("7E0","7E8")));
+  await ensureBusReady("po nasłuchu");
+  refresh();
+  const rows=Object.entries(byId).sort((a,b)=>b[1].n-a[1].n);
+  if(!rows.length){
+    labZapisz("listen",'<div class="v FAIL">Zero ramek. Magistrala może nie wystawiać ruchu rozgłoszeniowego na tych pinach albo adapter nie wspiera ATMA.</div>',"zero ramek");
+    event("ERROR","NASŁUCH: brak ramek",{raw_probe:raw.slice(0,160)});
+    return;
+  }
+  const tbl=rows.slice(0,14).map(([id,g])=>'<tr><td><b>'+id+'</b></td><td>'+g.n+'</td><td>'+g.len+'</td><td style="color:var(--dim)">'+g.last+'</td></tr>').join("");
+  labZapisz("listen",
+    '<div class="v PASS">Zebrano <b>'+frames.length+'</b> ramek, <b>'+rows.length+'</b> różnych identyfikatorów w '+dur.toFixed(1)+' s'+
+    (capture.buffer_full?' · <span style="color:var(--warn)">bufor adaptera przepełniony — skróć nasłuch</span>':'')+'</div>'+
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font:11px var(--mono)">'+
+    '<tr style="color:var(--dim)"><th align="left">ID</th><th align="left">ramek</th><th align="left">B</th><th align="left">ostatnie dane</th></tr>'+tbl+'</table></div>'+
+    '<p style="font-size:11px;color:var(--dim)">Zapisane w sesji. Żeby znaleźć przebieg: zrób nasłuch teraz i drugi po przejechaniu kilku kilometrów — pole, które urosło o przejechany dystans, to licznik.</p>',
+    frames.length+" ramek · "+rows.length+" identyfikatorów");
+  event("INFO","NASŁUCH koniec",{frames:frames.length,ids:rows.length,buffer_full:capture.buffer_full});
+}
+
+/* ─────────── SKAN MODUŁÓW ───────────
+   Do każdego adresu diagnostycznego wysyłamy 22 F190 (numer identyfikacyjny) — nieszkodliwy odczyt,
+   na który odpowiada praktycznie każdy moduł. Kto się odezwie, ten istnieje i jest osiągalny. */
+async function scanModules(){
+  if(!connected||monitoring||autoRunning||listening||inflight||queue.length)return;
+  /* Adresy z realnego ruchu Car Scannera na TYM aucie. Sondujemy TesterPresent (3E) — to
+     uniwersalne „jesteś tam?" bez skutków ubocznych. Moduł 720 odpowiada na 3E, ale na 22F190
+     daje NO DATA, więc sondowanie samym 22 pokazywałoby go jako nieobecny (błąd v0.8.2).
+     Na czas skanu wydłużamy limit adaptera: moduły za bramką odpowiadają wolniej niż ECM,
+     a ATST 08 (32 ms) je ucina. */
+  const ADDR=["720","726","730","736","737","745","746","747","753","756","760","764",
+              "793","794","795","797","7C7","7E0","7E1","7E4","7E7"];
+  $("#listenResult").innerHTML='<div class="v INFO">Skanuję '+ADDR.length+' adresów…</div>';
+  await runCommands(["ATST 40"]);
+  const found=[];
+  for(const req of ADDR){
+    if(!connected)break;
+    const resp=(parseInt(req,16)+8).toString(16).toUpperCase().padStart(3,"0");
+    resetIsoTp();
+    await runCommands(endpointCommands(req,resp));
+    let alive=null,note="";
+    /* null, a nie "ECM": adres ustawiliśmy przed chwilą ręcznie na skanowany moduł. */
+    const t=await requestVehicle("3E00",null,900);
+    if(t.meta&&(t.meta.status==="RESPONSE"||t.meta.status==="NEGATIVE_RESPONSE"))alive="odpowiada";
+    if(alive){
+      await delay(REQUEST_GAP_MS);
+      const d=await requestVehicle("22F190",null,900);
+      if(d.meta&&d.meta.status==="RESPONSE")note="czyta DID F190";
+      else if(d.meta&&d.meta.status==="NEGATIVE_RESPONSE")note="obsługuje tryb 22 (NRC "+(d.meta.nrc||"?")+")";
+      else note="tryb 22 bez odpowiedzi";
+      found.push({req,resp,note});
+    }
+    await delay(REQUEST_GAP_MS);
+  }
+  resetIsoTp();
+  await runCommands(["ATST 08"]);
+  await runCommands(endpointCommands("7E0","7E8"));
+  labZapisz("listen",found.length
+    ? '<div class="v PASS">Odezwało się '+found.length+' z '+ADDR.length+' modułów:</div><div style="font:11px var(--mono)">'+
+      found.map(f=>'<div style="margin:4px 0"><b>'+f.req+'</b> → '+f.resp+' · '+f.note+'</div>').join("")+
+      '</div><p style="font-size:11px;color:var(--dim)">Moduł opisany jako „obsługuje tryb 22" zna odczyt identyfikatorów — tam szukamy licznika przebiegu.</p>'
+    : '<div class="v INCONCLUSIVE">Żaden z '+ADDR.length+' adresów nie odpowiedział.</div>',
+    "skan modułów: "+found.length+" z "+ADDR.length);
+  refresh();
+}
+
+/* Jedno zapytanie kontrolne. Gdy adapter zgubił ustawienia, cisza wygląda dokładnie tak samo
+   jak niesprawny samochód — a to dwie zupełnie różne diagnozy. Zamiast zgadywać, sprawdzamy
+   i w razie potrzeby wgrywamy profil od nowa. */
+async function ensureBusReady(gdzie){
+  if(!connected)return false;
+  const probe=await requestVehicle("010C",null,POLL_TIMEOUT);
+  if(probe.correlation&&probe.correlation.pass)return true;
+  event("ERROR","ADAPTER_ZGUBIL_USTAWIENIA",{gdzie,status:probe.status});
+  resetIsoTp();
+  await runCommands(["ATE0","ATL0","ATS1","ATH1","ATAL","ATAT1","ATST 08","ATCAF1","ATSP6"].concat(endpointCommands("7E0","7E8")));
+  const again=await requestVehicle("010C",null,POLL_TIMEOUT);
+  const ok=!!(again.correlation&&again.correlation.pass);
+  event(ok?"INFO":"ERROR",ok?"ADAPTER_ODZYSKANY":"ADAPTER_NIE_ODPOWIADA",{gdzie,status:again.status});
+  return ok;
+}
+
+/* ═══════════ ZWOLNIENIE MAGISTRALI POD CZYNNOŚĆ LABORATORYJNĄ ═══════════
+   Monitor startuje sam po połączeniu, więc każda czynność wymagająca wolnej magistrali
+   odbijała się od warunku „zatrzymaj monitor" — a większość robiła to PO CICHU, bez słowa
+   na ekranie. Dlatego ramka zamrożona nie została odczytana ani razu w żadnej sesji.
+   Teraz monitor zatrzymujemy za użytkownika, a sesji przy tym nie wysyłamy na repo
+   (wysyłka i tak nastąpi przy właściwym zatrzymaniu pomiaru). */
+let holdAutoPush=false;
+async function freeBus(){
+  if(!connected)return "Najpierw połącz się z autem.";
+  if(autoRunning)return "Trwa diagnostyka startowa, poczekaj chwilę.";
+  if(listening)return "Trwa nasłuch magistrali — zatrzymaj go najpierw.";
+  if(monitoring){
+    /* holdAutoPush zdejmuje dopiero start monitora — ogon pętli monitora jest asynchroniczny
+       i mógłby wystartować wysyłkę już po powrocie z tej funkcji. */
+    holdAutoPush=true;monitoring=false;refresh();
+    if(!await waitForTransportIdle())return "Monitor nie zwolnił magistrali — spróbuj jeszcze raz.";
+    return null;   /* monitor właśnie działał, więc adapter na pewno jest skonfigurowany */
+  }
+  if(inflight||queue.length||drain||settle)return "Transport zajęty, spróbuj za moment.";
+  /* Magistrala stoi od dłuższej chwili — upewnij się, że adapter nie zgubił ustawień,
+     inaczej pusty wynik czynności zostałby wzięty za odpowiedź samochodu. */
+  if(!await ensureBusReady("przed czynnością"))
+    return "Adapter nie odpowiada na zapytania kontrolne — odłącz i połącz ponownie.";
+  return null;
+}
+
+/* ═══════════ TEST CIŚNIENIA PALIWA ═══════════
+   Monitor odpytuje PID 0A raz na kilkanaście sekund — za rzadko, żeby zobaczyć nabicie szyny
+   (trwa ~2 s) i tempo jej opadania. Tu odpytujemy wyłącznie ten jeden PID, w pętli. */
+const PRESS_MAX_MS=150000, PRESS_GAP_MS=30;
+let pressRunning=false;
+function pressVerdict(pts){
+  if(!pts.length)return{kind:"FAIL",text:"Ani jednego odczytu ciśnienia."};
+  const v=pts.map(p=>p.v), max=Math.max(...v), last=v[v.length-1], first=v[0];
+  const sec=((pts[pts.length-1].t-pts[0].t)/1000).toFixed(0);
+  const opis=" ("+pts.length+" odczytów w "+sec+" s; szczyt "+max+" kPa, na końcu "+last+" kPa)";
+  if(max<50)return{kind:"INCONCLUSIVE",text:"Ciśnienie nie podniosło się"+opis+
+    ". Albo pompa nie nabiła szyny w tym oknie, albo sterownik nie liczy tego PID-u przy zgaszonym silniku. Uruchom test od razu po przekręceniu kluczyka."};
+  if(last>=0.8*max)return{kind:"PASS",text:"Ciśnienie się trzyma"+opis+". Układ nie wykazuje nieszczelności."};
+  if(last<=0.5*max)return{kind:"FAIL",text:"Ciśnienie wyraźnie spada"+opis+
+    ". To wskazuje na nieszczelny wtryskiwacz albo zawór zwrotny przy module pompy."};
+  return{kind:"INCONCLUSIVE",text:"Ciśnienie powoli opada"+opis+". Powtórz test dłużej, żeby rozstrzygnąć."};
+}
+async function pressureTest(){
+  if(pressRunning){pressRunning=false;return}
+  const zajete=await freeBus();
+  if(zajete){$("#pressResult").innerHTML='<div class="v FAIL">'+zajete+'</div>';return}
+  pressRunning=true;$("#pressTest").textContent="Zatrzymaj test";refresh();
+  $("#pressResult").innerHTML='<div class="v INFO">Mierzę… zapłon włączony, silnika nie odpalaj.</div>';
+  const pts=[], t0=mono();
+  while(pressRunning&&connected&&mono()-t0<PRESS_MAX_MS){
+    const res=await requestVehicle("010A",null,POLL_TIMEOUT);
+    if(res.correlation&&res.correlation.pass){
+      const m=parsePidMap(res.text), b=m["0A"];
+      if(b){
+        const d=decodePid("0A",b);
+        if(d){pts.push({t:mono(),v:d.value});
+          acceptSample("powertrain.fuel.rail_pressure.obd",d,res,b.map(x=>x.toString(16).padStart(2,"0")).join(" "));
+          $("#pressNow").textContent=d.display+" kPa · szczyt "+Math.max(...pts.map(p=>p.v))+" · "+pts.length+" odczytów";}
+      }
+    }
+    await delay(PRESS_GAP_MS);
+  }
+  pressRunning=false;$("#pressTest").textContent="Start testu";
+  const v=pressVerdict(pts);
+  const seria=pts.filter((_,k)=>k%Math.max(1,Math.ceil(pts.length/24))===0)
+    .map(p=>((p.t-pts[0].t)/1000).toFixed(0)+"s "+p.v).join("  ·  ");
+  labZapisz("press",'<div class="v '+v.kind+'">'+v.text+'</div>'+
+    (pts.length?'<div style="font:11px var(--mono);color:var(--dim);margin-top:6px;overflow-x:auto">'+seria+'</div>':""),
+    v.kind==="PASS"?"trzyma · szczyt "+Math.max(...pts.map(x=>x.v))+" kPa":v.kind==="FAIL"?"spada":"nierozstrzygnięte");
+  event("INFO","TEST_CISNIENIA",{odczytow:pts.length,szczyt:pts.length?Math.max(...pts.map(p=>p.v)):null,
+    koniec:pts.length?pts[pts.length-1].v:null,werdykt:v.kind});
+  refresh();
+}
+
+/* ═══════════ MONITORY POKŁADOWE (TRYB 06) ═══════════
+   Format rekordu: <MID> <TID> <UAS> <wartość hi> <lo> <min hi> <lo> <max hi> <lo> — 9 bajtów,
+   w jednej odpowiedzi może być ich kilka. Wartość liczy się według identyfikatora skalowania
+   (UAS); dla liczników wypadania to zwykłe sztuki. Nieznanego UAS nie udajemy, że rozumiemy. */
+/* Nazwy monitorów: układ „MID 02-07 = cylindry 1-6" to konwencja, NIE gwarancja. Zmierzone
+   na tym aucie: 0603-0607 odpowiadają „7F 06 12" (nieobsługiwane), a MID 02 niesie napięcia
+   w miliwoltach i czasy w milisekundach, czyli jest monitorem sondy lambda. Dlatego nie
+   przypisujemy MID-om nazw cylindrów — czytamy to, co sterownik faktycznie wystawia. */
+const MID_ZNANE={"01":"Monitor układu (MID 01)","02":"Monitor sondy lambda (MID 02)",
+  "A1":"Wypady — dane ogólne","A2":"Wypady CYLINDER 1","A3":"Wypady CYLINDER 2","A4":"Wypady CYLINDER 3",
+  "A5":"Wypady CYLINDER 4","A6":"Wypady CYLINDER 5","A7":"Wypady CYLINDER 6","A8":"Wypady CYLINDER 7",
+  "A9":"Wypady CYLINDER 8","AA":"Wypady CYLINDER 9","AB":"Wypady CYLINDER 10"};
+/* Zmierzone 06.08: mapa monitorów wskazała A2-A7 (i tylko je z zakresu wypadów), co zgadza się
+   z normą — to jedyne miejsce, gdzie ten sterownik podaje wypady OSOBNO dla cylindrów, z ich
+   standardową, fizyczną numeracją. Dwa testy na cylinder: */
+const TID_WYPADY={0x0B:"średnia z 10 cykli jazdy",0x0C:"bieżący cykl jazdy"};
+/* Skalowania wg normy. Wpisujemy WYŁĄCZNIE te, których jesteśmy pewni; reszta zostaje surowa,
+   z widocznym numerem UAS. Identyfikatory od 0x80 w górę to wersje ze znakiem tych z dołu. */
+const UAS={0x01:{k:1,u:""},0x02:{k:0.1,u:""},0x03:{k:0.01,u:""},0x04:{k:0.001,u:""},
+  0x05:{k:0.0000305,u:"%"},0x06:{k:0.000305,u:"%"},0x07:{k:0.25,u:"obr/min"},
+  0x08:{k:0.01,u:"km/h"},0x09:{k:1,u:"km/h"},0x0A:{k:0.122,u:"mV"},0x0B:{k:0.001,u:"V"},
+  0x0C:{k:0.01,u:"V"},0x10:{k:1,u:"ms"},0x11:{k:100,u:"ms"},0x12:{k:1,u:"s"}};
+function skala(uas){const zn=uas>=0x80, s=UAS[uas&0x7F];return{zn,k:s?s.k:1,u:s?s.u:"surowo",known:!!s}}
+function decodeMonitorRecords(bytes){
+  const out=[];
+  let i=bytes.indexOf(0x46);
+  if(i<0)return out;
+  i++;
+  while(i+8<bytes.length){
+    const mid=bytes[i],tid=bytes[i+1],uas=bytes[i+2];
+    const s=skala(uas);
+    const w=(a,b)=>{const v=(a<<8)|b;return s.zn&&v>=32768?v-65536:v};
+    const raw=w(bytes[i+3],bytes[i+4]), lo=w(bytes[i+5],bytes[i+6]), hi=w(bytes[i+7],bytes[i+8]);
+    out.push({mid:mid.toString(16).toUpperCase().padStart(2,"0"),tid,uas,
+      value:+(raw*s.k).toFixed(4), min:+(lo*s.k).toFixed(4), max:+(hi*s.k).toFixed(4),
+      raw,raw_min:lo,raw_max:hi, unit:s.u, known:s.known, signed:s.zn});
+    i+=9;
+  }
+  return out;
+}
+/* Mapa obsługiwanych monitorów: 0600 opisuje MID-y 01-20, 0620 kolejne 20 i tak dalej.
+   Odpowiedź to cztery bajty bitów, a nie rekordy — osobny dekoder, inaczej parser rekordów
+   sklecił ze śmieci coś, co wygląda jak dane. */
+const MID_BLOKI=["00","20","40","60","80","A0"];
+function decodeMidBitmap(bytes,baseHex){
+  const i=bytes.indexOf(0x46);
+  if(i<0||bytes.length<i+6)return null;
+  if(bytes[i+1]!==parseInt(baseHex,16))return null;
+  const base=parseInt(baseHex,16), out=[];
+  const bits=[bytes[i+2],bytes[i+3],bytes[i+4],bytes[i+5]];
+  for(let k=0;k<32;k++) if((bits[k>>3]>>(7-(k&7)))&1) out.push((base+k+1).toString(16).toUpperCase().padStart(2,"0"));
+  return out;
+}
+/* 0600 potrafi wygasnąć przy pierwszej próbie (zmierzone) — nie wolno na tej podstawie
+   uznać, że sterownik nie ma monitorów. */
+async function midyObslugiwane(){
+  const znalezione=[];let ktorykolwiek=false;
+  for(const blok of MID_BLOKI){
+    if(!connected)break;
+    let lista=null;
+    for(let n=0;n<2&&!lista;n++){
+      const res=await requestVehicle("06"+blok,"ECM",POLL_TIMEOUT);
+      if(res.correlation&&res.correlation.pass&&res.meta&&res.meta.status!=="NEGATIVE_RESPONSE"){
+        const b=(res.text||"").toUpperCase().split(/\s+/).filter(x=>/^[0-9A-F]{2}$/.test(x)).map(x=>parseInt(x,16));
+        lista=decodeMidBitmap(b,blok);
+      }
+      await delay(REQUEST_GAP_MS);
+    }
+    if(!lista)continue;
+    ktorykolwiek=true;
+    znalezione.push(...lista);
+    const nastepny=(parseInt(blok,16)+0x20).toString(16).toUpperCase().padStart(2,"0");
+    if(!lista.includes(nastepny))break;
+  }
+  return {lista:[...new Set(znalezione)],zMapy:ktorykolwiek};
+}
+async function readMonitors(){
+  const zajete=await freeBus();
+  if(zajete){$("#monResult").innerHTML='<div class="v FAIL">'+zajete+'</div>';return}
+  $("#monResult").innerHTML='<div class="v INFO">Szukam obsługiwanych monitorów…</div>';
+  let {lista,zMapy}=await midyObslugiwane();
+  if(!lista.length){
+    /* Bez mapy nie zgadujemy, że monitorów nie ma — pytamy po kolei. */
+    $("#monResult").innerHTML='<div class="v INFO">Mapa monitorów niedostępna, przepytuję po kolei…</div>';
+    lista=[];for(let i=1;i<=0x30;i++)lista.push(i.toString(16).toUpperCase().padStart(2,"0"));
+  }
+  $("#monResult").innerHTML='<div class="v INFO">Odczytuję '+lista.length+' monitorów…</div>';
+  const rows=[],odmowy=[],ciche=[];
+  for(const mid of lista){
+    if(!connected)break;
+    const res=await requestVehicle("06"+mid,"ECM",POLL_TIMEOUT);
+    if(res.meta&&res.meta.status==="NEGATIVE_RESPONSE"){odmowy.push(mid);await delay(REQUEST_GAP_MS);continue}
+    if(!(res.correlation&&res.correlation.pass)){ciche.push(mid);await delay(REQUEST_GAP_MS);continue}
+    const b=(res.text||"").toUpperCase().split(/\s+/).filter(x=>/^[0-9A-F]{2}$/.test(x)).map(x=>parseInt(x,16));
+    for(const r of decodeMonitorRecords(b))rows.push({...r,name:MID_ZNANE[r.mid]||("Monitor MID "+r.mid)});
+    await delay(REQUEST_GAP_MS);
+  }
+  event("INFO","MONITORY_06",{rekordow:rows.length,z_mapy:zMapy,pytano:lista.length,
+    odmowy:odmowy.length,ciche:ciche.length,midy_z_danymi:[...new Set(rows.map(r=>r.mid))]});
+  if(!rows.length){
+    $("#monResult").innerHTML='<div class="v INCONCLUSIVE">Żaden z '+lista.length+
+      ' monitorów nie zwrócił danych (odmów: '+odmowy.length+', bez odpowiedzi: '+ciche.length+').</div>';
+    return;
+  }
+  /* Położenie wartości między progami jest czytelne NIEZALEŻNIE od tego, czy znamy skalowanie —
+     i to jest najcenniejsza informacja tego trybu. */
+  /* 0x8000 i 0xFFFF to nie progi, tylko „brak progu". Liczenie z nich procentów dawało
+     bzdury: monitor bez ograniczenia z dołu pokazywał 98% zakresu, a licznik wypadów
+     z górnym progiem 65535 pokazywał 0% i wyglądał na zdrowy niezależnie od wartości. */
+  const bezDol=r=>r.raw_min===-32768||r.raw_min===32768, bezGora=r=>r.raw_max===65535;
+  const proc=r=>{if(bezDol(r)||bezGora(r))return null;const z=r.max-r.min;return z>0?Math.round(100*(r.value-r.min)/z):null};
+  const progOpis=r=>bezDol(r)&&bezGora(r)?"bez progów":bezDol(r)?("próg górny "+r.max):bezGora(r)?("próg dolny "+r.min):("próg "+r.min+" … "+r.max);
+  const wiersz=r=>{
+    const p=proc(r), poza=(!bezGora(r)&&r.value>r.max)||(!bezDol(r)&&r.value<r.min);
+    return '<div style="padding:4px 0;border-bottom:1px solid var(--line)">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px">'+
+      '<span style="color:var(--dim)">'+r.name+' · '+(TID_WYPADY[r.tid]||("test "+r.tid.toString(16).toUpperCase().padStart(2,"0")))+'</span>'+
+      '<b'+(poza?' style="color:#e66"':'')+'>'+r.value+' '+r.unit+'</b></div>'+
+      '<div style="font-size:10px;color:var(--dim)">'+progOpis(r)+
+      (p!=null?'  ·  '+p+'% zakresu':'')+(r.known?'':'  ·  skalowanie UAS '+r.uas.toString(16).toUpperCase()+' nieznane, wartość surowa')+'</div></div>';
+  };
+  const midy=[...new Set(rows.map(r=>r.mid))];
+  labZapisz("mon",'<div class="v PASS">'+rows.length+' wyników z '+midy.length+' monitorów ('+midy.join(", ")+')</div>'+
+    '<div style="font:11px var(--mono)">'+rows.map(wiersz).join("")+'</div>'+
+    '<p style="font-size:11px;color:var(--dim)">Wartość blisko progu znaczy, że monitor jest bliski zapalenia kodu. Liczniki wypadów per cylinder siedzą pod MID A2–A7 w fizycznej numeracji.</p>',
+    rows.filter(r=>/CYLINDER/.test(r.name)).map(r=>r.name.replace("Wypady CYLINDER","cyl")+"="+r.value).join(" · ")||(rows.length+" wyników"));
+  await dbPut("freeze",{session:sessionId,seq:++seq,ts_wall:wall(),ts_mono:mono(),kind:"monitors_mode06",
+    dtc:null,fuel_state:fuelState,odometer_km:currentOdometer(),
+    supported_from_bitmap:zMapy,queried:lista,denied:odmowy,silent:ciche,values:rows});
+}
+
+/* Standardowy PID rodzaju paliwa. Sterownik nie wie o instalacji gazowej, więc niemal na pewno
+   zwróci „benzyna" — ale kod 0x0E oznacza „dwupaliwowy, pracuje na LPG" i rozstrzygnąłby temat. */
+const FUEL_TYPE={1:"benzyna",2:"metanol",3:"etanol",4:"diesel",5:"LPG",6:"CNG",7:"propan",8:"elektryczny",
+  11:"dwupaliwowy — pracuje na benzynie",12:"dwupaliwowy — metanol",13:"dwupaliwowy — etanol",
+  14:"dwupaliwowy — PRACUJE NA LPG",15:"dwupaliwowy — CNG",16:"dwupaliwowy — propan",17:"dwupaliwowy — elektryczny"};
+async function readFuelType(){
+  const zajete=await freeBus();
+  if(zajete){$("#fuelTypeResult").innerHTML='<div class="v FAIL">'+zajete+'</div>';return}
+  const res=await requestVehicle("0151","ECM",POLL_TIMEOUT);
+  const m=parsePidMap(res.text);
+  const b=m["51"]?m["51"][0]:null;
+  labZapisz("fuelType",b!=null
+    ? '<div class="v PASS">PID 51 = '+b+' → <b>'+(FUEL_TYPE[b]||"kod nieznany")+'</b></div>'
+    : '<div class="v INCONCLUSIVE">Brak odpowiedzi na PID 51 (odp.: '+String(res.status)+')</div>',
+    b!=null?(FUEL_TYPE[b]||"kod "+b):"brak odpowiedzi");
+  if(b!=null)event("INFO","RODZAJ_PALIWA",{kod:b,opis:FUEL_TYPE[b]||"nieznany"});
+}
+
+async function readDid(didRaw,ecu){const did=String(didRaw||"").toUpperCase().replace(/[^0-9A-F]/g,"");if(!/^[0-9A-F]{4}$/.test(did)){event("ERROR","DID musi mieć dokładnie 4 znaki hex");return}const zajete=await freeBus();if(zajete){renderVerdict({kind:"FAIL",text:zajete});return}const ep=ENDPOINTS[ecu]||ENDPOINTS.ECM;$("#readDid").disabled=true;resetIsoTp();await runCommands(endpointCommands(ep.request,ep.response));const res=await requestVehicle("22"+did,ecu,DID_POLL_TIMEOUT);let verdict;if(res.correlation&&res.correlation.pass&&res.meta.status!=="NEGATIVE_RESPONSE"){const bytes=extractDidData(res.text,did),def=DID_DEFS[ecu+":"+did];if(!bytes)verdict={kind:"INCONCLUSIVE",text:"Skorelowana odpowiedź, ale parser nie wydobył payloadu"};else if(def&&def.codec==="misfire6_u16be"){const rawCounts=decodeMisfire(bytes);
+    if(rawCounts){applyMisfire(rawCounts,res,bytes.slice(0,MISFIRE_CYL*2).map(x=>x.toString(16).padStart(2,"0")).join(" "));
+      verdict={kind:"PASS",text:"Wypady (licznik ECU): "+rawCounts.map((v,i)=>`CYL${DAB6_NA_CYLINDER[i]}=${v}`).join(" · "),detail:"Suma w tej sesji: "+misfireTotals.map((v,i)=>`CYL${DAB6_NA_CYLINDER[i]}=${v}`).join(" · ")+" (kolejność zapłonu 1-5-3-6-2-4)"}}
+    else verdict={kind:"INCONCLUSIVE",text:"DAB6: nieoczekiwana długość payloadu",detail:candidateViews(bytes)}}
+  else if(def){const decoded=decodeDefinition(def,bytes);if(decoded&&decoded.value>=def.min&&decoded.value<=def.max){acceptSample(def.signal_id,decoded,res,bytes.map(x=>x.toString(16).padStart(2,"0")).join(" "),def.confidence);verdict={kind:"PASS",text:`${def.name} = ${decoded.display} ${decoded.unit}`,detail:candidateViews(bytes)}}else verdict={kind:"INCONCLUSIVE",text:"Wartość poza zakresem plausibility",detail:candidateViews(bytes)}}else verdict={kind:"INFO",text:`DID ${did} odpowiedział; definicja pozostaje kandydatem`,detail:candidateViews(bytes)}}else if(res.meta&&res.meta.status==="NEGATIVE_RESPONSE")verdict={kind:"INCONCLUSIVE",text:`DID ${did}: 7F 22 ${res.meta.nrc} (${res.meta.nrcName})`,detail:res.text};else verdict={kind:"FAIL",text:`DID ${did}: odpowiedź odrzucona przez korelację (${res.status})`,detail:res.correlation&&res.correlation.reason};renderVerdict(verdict);await runCommands(endpointCommands("7E0","7E8"));refresh()}
+function renderVerdict(v){const box=document.createElement("div");box.className="v "+v.kind;box.innerHTML='<b></b><div></div><small style="color:var(--dim);font-family:var(--mono)"></small>';box.querySelector("b").textContent=v.kind;box.querySelector("div").textContent=v.text;box.querySelector("small").textContent=v.detail||"";verdictEl.prepend(box)}
+
+function showFuelPrompt(){$("#fuelPrompt").classList.add("show")}
+function setFuel(state){if(!["BENZYNA","LPG"].includes(state))return;fuelState=state;$("#fuel").textContent=state;$("#fuel").className="status on";$$('[data-fuel]').forEach(b=>b.classList.toggle("active",b.dataset.fuel===state));$("#fuelPrompt").classList.remove("show");event("INFO","FUEL_STATE "+state,{event_type:"fuel_transition",fuel_state:state})}
+function newSession(){if(inflight||queue.length||monitoring||autoRunning)return;stopSessionBeat();sessionPushed=false;sessionPushedPath=null;sessionId=uuid();seq=0;sessionStartedWall=wall();sessionStartedMono=mono();sessionSampleCount=0;sessionExchangeCount=0;fuelState=null;lastSignals.clear();counters={timeouts:0,late:0,orphan:0,mismatch:0,bufferFull:0,rejected:0,salvaged:0,busTraffic:0,writeFail:0};misfirePrev=null;misfireTotals=new Array(MISFIRE_CYL).fill(0);stftWin=[];lastSuspicion=-1e9;suspicionAt=null;$("#fuel").textContent="WYBIERZ";$("#fuel").className="status warn";$$('[data-fuel]').forEach(b=>b.classList.remove("active"));$("#session").textContent="sesja: "+sessionId.slice(0,8);event("INFO","Nowa sesja "+sessionId,{app_version:APP_VERSION});startSessionBeat();renderCards();refresh();showFuelPrompt()}
+async function waitForTransportIdle(maxMs=6000){const end=performance.now()+maxMs;while((inflight||queue.length||drain||settle||listening)&&performance.now()<end)await delay(50);return !inflight&&!queue.length&&!drain&&!settle&&!listening}
+async function exportSession(){if(autoRunning||exporting){if(autoRunning)event("ERROR","Eksport dostępny po zakończeniu diagnozy startowej");return}exporting=true;refresh();const old=$("#export").textContent;if(monitoring){monitoring=false;$("#export").textContent="Domykam bieżący pomiar…";refresh();if(!await waitForTransportIdle()){event("ERROR","Eksport przerwany: transport nie przeszedł w stan idle");exporting=false;$("#export").textContent=old;refresh();return}}$("#export").textContent="Przygotowuję eksport…";const flushed=await flushWrites();if(!flushed){event("ERROR","Eksport przerwany: oczekujące zapisy IndexedDB");exporting=false;$("#export").textContent=old;refresh();return}const[chunks,exchanges,samples,events,frames]=await Promise.all([dbAll("chunk"),dbAll("exchange"),dbAll("sample"),dbAll("event"),dbAll("frame")]);const manifest={record_type:"capture_manifest",schema:"xc70.capture_manifest.v2",session_id:sessionId,app_version:APP_VERSION,started_wall:sessionStartedWall,ended_wall:wall(),duration_ms:Math.round(mono()-sessionStartedMono),write_flush_complete:true,adapter:{name:device?(device.name||null):null,profile:adapterProfile,service_uuid:serviceUuid},scope:{transport:"BLE ELM",policy:"read-only allowlist",endpoints:ENDPOINTS},parser:{framing:"ELM CAF1 ATH1 + składanie ISO-TP w aplikacji",correlation:"service+PID/DID",version:APP_VERSION},counters:{...counters},fuel_state_last:fuelState,misfire_mapping:MISFIRE_MAPA,vehicle:{vin:vehicleVin||null,odometer_km:currentOdometer()},records:{chunks:chunks.length,exchanges:exchanges.length,samples:samples.length,events:events.length,frames:frames.length,freeze:freeze.length,discovery:disc.length},privacy:{vin_included:!!vehicleVin}};const lines=[manifest,...chunks.map(x=>({record_type:"transport_chunk",...x})),...exchanges.map(x=>({record_type:"exchange",...x})),...samples.map(x=>({record_type:"sample",...x})),...events.map(x=>({record_type:"event",...x})),...frames.map(x=>({record_type:"bus_capture",...x})),...freeze.map(x=>({record_type:"freeze_frame",...x})),...disc.map(x=>({record_type:"did_discovery",...x}))].map(x=>JSON.stringify(x)).join("\n");const url=URL.createObjectURL(new Blob([lines],{type:"application/x-ndjson"})),a=document.createElement("a");a.href=url;a.download=`xc70_${sessionId.slice(0,8)}_${wall().replace(/[:.]/g,"-")}.jsonl`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);$("#export").textContent=`Wyeksportowano ${samples.length} próbek`;setTimeout(()=>{exporting=false;$("#export").textContent=old;refresh()},1800)}
+
+async function identifyAndDiagnose(){autoRunning=true;refresh();krok("elm","run");const setup=await configureObd();/* ATZ/ATI/AT@1 to reset i odpytanie o wersję — ATZ potrafi odpowiedzieć STOPPED, gdy adapter
+   był w trakcie pracy, mimo że reset się wykonał (zaobserwowane na aucie 29.07). Bramkujemy
+   tylko komendy, od których zależy poprawna konfiguracja transportu. */
+const SETUP_CRITICAL=["ATE0","ATL0","ATS1","ATH1","ATCAF1","ATSP6","ATSH 7E0","ATCRA 7E8"];
+  const setupBad=setup.find(x=>SETUP_CRITICAL.includes(x.cmd)&&(!["RESPONSE"].includes(x.status)||!x.correlation.pass));if(setupBad){krokBlad("elm","Adapter nie potwierdził konfiguracji ("+setupBad.cmd+" → "+setupBad.status+").","Odłącz adapter od gniazda na 5 sekund i spróbuj ponownie.");renderVerdict({kind:"FAIL",text:"Konfiguracja adaptera nie została potwierdzona",detail:setupBad.cmd+" "+setupBad.status});autoRunning=false;refresh();return}
+  krok("elm","ok","ATH1 · CAF1 · ATST 08 · ISO 15765 (CAN 11/500)");
+  krok("proto","run");
+  let ecmOdpowiedzial=false;for(const cmd of ["0100","0120","0140","0160","0904","0906","03","07","06"]){if(!connected)break;
+    const r=await requestVehicle(cmd,"ECM",DEFAULT_TIMEOUT);
+    if(r.correlation&&r.correlation.pass)ecmOdpowiedzial=true;
+    await delay(150)}
+  if(ecmOdpowiedzial)krok("proto","ok","ECM odpowiada pod 7E0 → 7E8");
+  else krokBlad("proto","Adapter odpowiada, ale sterownik silnika nie.",
+    "Włącz zapłon (kluczyk w pozycji II) i naciśnij Szukaj adaptera ponownie.");
+  /* VIN przy starcie, bez klikania. Auto odpowiada na 0902 (potwierdzone w danych z 7 wymian),
+     a mimo to nagłówki sesji szły z vin:null, bo nikt nie naciskał przycisku. */
+  if(connected){
+    if(vehicleVin)krok("vin","ok",vehicleVin+" (zapamiętany)");
+    else{
+      krok("vin","run");
+      const rv=await requestVehicle("0902","ECM",DEFAULT_TIMEOUT);
+      const v=vinFromResponse(rv.text);
+      if(v){saveVin(v);showVin();krok("vin","ok",v);event("INFO","VIN_ODCZYTANY_AUTO",{vin:v})}
+      else{krok("vin","err","sterownik nie oddał VIN-u ("+rv.status+") — wpisz ręcznie w ⚙");
+        event("INFO","VIN_AUTO_BEZ_ODPOWIEDZI",{status:rv.status})}
+      await delay(150);
+    }
+  }
+  /* Panel zamyka się sam dopiero, gdy wszystko przeszło — inaczej zostaje z powodem. */
+  if(ecmOdpowiedzial){const t=$("#connTitle");if(t)t.textContent="Połączono";
+    setTimeout(zamknijPanelPolaczenia,1200)}
+  autoRunning=false;refresh();if(connected)monitor()}
+async function mainToggle(){if(connected){await disconnect();return}if(!fuelState){showFuelPrompt();return}const ok=await connect();if(ok)identifyAndDiagnose()}
+function toggleMonitor(){if(monitoring){monitoring=false;refresh();return}if(connected&&!autoRunning&&!inflight&&!queue.length&&!drain&&!settle)monitor()}
+
+$("#main").onclick=mainToggle;$("#monitorToggle").onclick=toggleMonitor;$("#listen").onclick=()=>listenBus(+$("#listenSecs").value||8);
+$("#scanModules").onclick=scanModules;
+$("#readFuelType").onclick=readFuelType;
+$("#readDid").onclick=()=>readDid($("#did").value,$("#endpoint").value);$("#did").onkeydown=e=>{if(e.key==="Enter")readDid(e.target.value,$("#endpoint").value)};
+$$('[data-did]').forEach(b=>b.onclick=()=>{$("#did").value=b.dataset.did;$("#endpoint").value=b.dataset.ecu;readDid(b.dataset.did,b.dataset.ecu)});$$('[data-fuel]').forEach(b=>b.onclick=()=>setFuel(b.dataset.fuel));
+$("#newSession").onclick=newSession;$("#export").onclick=exportSession;$("#clear").onclick=()=>logEl.innerHTML="";
+$$('[data-page]').forEach(button=>button.onclick=()=>{const page=button.dataset.page;$$('[data-page]').forEach(b=>b.classList.toggle("active",b===button));$$('[data-page-panel]').forEach(panel=>panel.classList.toggle("active",panel.dataset.pagePanel===page));window.scrollTo({top:0,behavior:"smooth"})});
+CANDIDATES.forEach(c=>{const b=document.createElement("button");b.textContent=`${c.name} ${c.did}`;b.className="badge candidate";b.onclick=()=>{$("#did").value=c.did;$("#endpoint").value=c.ecu;readDid(c.did,c.ecu)};$("#candidates").appendChild(b)});
+
+{const vl=$("#verline");if(vl)vl.textContent="read-only v"+APP_VERSION;document.title="XC70 Drive Data v"+APP_VERSION;}
+
+
+/* ── ustawienia w oknie modalnym: rzeczy konfigurowane raz nie mogą zaśmiecać ekranu roboczego ── */
+
+
+/* Obsługa MUSI siedzieć na widocznych przyciskach. W 0.15.0 przeniosłem markup i podpiąłem
+   ją do ukrytych elementów #suspLpg/#suspPb — kliknięcia szły w nicość, a użytkownik nie miał
+   jak potwierdzić przełączenia na gaz (zmierzone 07.08: czujka wykryła, potwierdzenie nieaktywne). */
+$$('[data-fuel-confirm]').forEach(b=>b.onclick=()=>resolveSuspicion(b.dataset.fuelConfirm));
+$("#suspNone").onclick=()=>resolveSuspicion("none");
+$("#readFreeze").onclick=readFreezeFrame;
+$("#pressTest").onclick=pressureTest;
+$("#readMon").onclick=readMonitors;
+$("#discRun").onclick=()=>discoverDids($("#discPrefix").value);
+$("#openSettings").onclick=()=>{$("#settings").classList.add("show")};
+$("#closeSettings").onclick=()=>{$("#settings").classList.remove("show")};
+$("#settings").addEventListener("click",e=>{if(e.target===$("#settings"))$("#settings").classList.remove("show")});
+/* Wysyłka jednym kliknięciem, z ekranu na którym pracujesz. Tryb bierzemy z ustawień,
+   żeby przycisk i automat po monitorze zachowywały się identycznie. */
+$("#pushNow").onclick=()=>pushSession(!!repoCfg().chunks);
+/* ── książka serwisowa i repozytorium ── */
+(function(){
+  const c=repoCfg();
+  if($("#repoOwner"))$("#repoOwner").value=c.owner||"";
+  if($("#repoName"))$("#repoName").value=c.repo||"";
+  if($("#repoBranch"))$("#repoBranch").value=c.branch||"main";
+  if($("#repoToken"))$("#repoToken").value=c.token||"";
+  if($("#repoAuto"))$("#repoAuto").checked=c.auto!==false;
+  if($("#repoChunks"))$("#repoChunks").checked=!!c.chunks;
+})();
+$("#repoSave").onclick=()=>{
+  saveRepoCfg({owner:$("#repoOwner").value.trim(),repo:$("#repoName").value.trim(),
+    branch:($("#repoBranch").value.trim()||"main"),token:$("#repoToken").value.trim(),
+    auto:$("#repoAuto").checked,chunks:$("#repoChunks").checked});
+  const el=$("#repoCfgStatus");if(el){el.textContent=repoReady()?"Zapisano. Repozytorium gotowe.":"Zapisano, ale brakuje właściciela, repo albo tokena.";el.className="v "+(repoReady()?"PASS":"FAIL")}
+};
+$("#repoAuto").onchange=()=>{const c=repoCfg();c.auto=$("#repoAuto").checked;saveRepoCfg(c)};
+$("#repoChunks").onchange=()=>{const c=repoCfg();c.chunks=$("#repoChunks").checked;saveRepoCfg(c)};
+function showVin(){
+  const el=$("#vinStatus");if(!el)return;
+  el.textContent=vehicleVin?("Zapisany VIN: "+vehicleVin):"Brak VIN-u — odczytaj z auta albo wpisz ręcznie.";
+  el.className="v "+(vehicleVin?"PASS":"INFO");
+}
+$("#repoVin").onclick=async()=>{
+  const el=$("#repoCfgStatus");
+  if(el){el.textContent="Odczytuję VIN…";el.className="v INFO"}
+  const r=await readVin();
+  if(el){el.textContent=r.vin?("VIN: "+r.vin):r.error;el.className="v "+(r.vin?"PASS":"FAIL")}
+  showVin();renderService();
+};
+$("#vinSave").onclick=()=>{
+  const raw=$("#vinInput").value||"";
+  if(!raw.trim()){saveVin(null);$("#vinInput").value="";showVin();
+    const el=$("#vinStatus");if(el){el.textContent="VIN usunięty.";el.className="v INFO"}return}
+  const v=saveVin(raw);
+  const el=$("#vinStatus");
+  if(!v){if(el){el.textContent="To nie wygląda na VIN: potrzeba 17 znaków bez liter I, O i Q.";el.className="v FAIL"}return}
+  $("#vinInput").value="";
+  event("INFO","VIN_WPISANY_RECZNIE",{vin:v});
+  showVin();renderService();
+};
+$("#odoSet").onclick=()=>{
+  const km=parseInt(($("#odoInput").value||"").replace(/\D/g,""),10);
+  const d=lastPid31();
+  if(!km){setSvcStatus("Podaj wskazanie licznika z deski.","err");return}
+  if(d==null){setSvcStatus("Brak odczytu PID 31 — uruchom monitor na chwilę, potem zakotwicz.","err");return}
+  setOdoAnchor(km,d);$("#odoInput").value="";
+  setSvcStatus("Zakotwiczono na "+km+" km.","ok");renderService();
+};
+$("#svcAdd").onclick=addServiceEntry;
+$("#mainBig").onclick=()=>$("#main").click();
+/* „Stop" w pasku zatrzymuje MONITOR, nie sesję. Zakończenie sesji było dotąd wyłącznie
+   w ustawieniach i nie dało się go znaleźć — teraz stoi tam, gdzie kończy się pomiar. */
+$("#endSession").onclick=()=>$("#newSession").click();
+$("#engOrdTg").onclick=e=>{engOrd=engOrd==="uklad"?"zaplon":"uklad";
+  e.target.textContent=engOrd==="uklad"?"układ ▸ zapłon":"zapłon ▸ układ";drawEngine()};
+$("#engFuelTg").onclick=e=>{
+  engFuel=engFuel==="razem"?"LPG":engFuel==="LPG"?"BENZYNA":"razem";
+  e.target.textContent="paliwo ▸ "+(engFuel==="razem"?"razem":engFuel.toLowerCase());drawEngine()};
+$("#moreBtn").onclick=()=>{const g=$("#cardsMore");g.hidden=!g.hidden;renderCards()};
+$("#advBtn").onclick=e=>{const d=$("#advBody");d.classList.toggle("open");
+  e.target.textContent=(d.classList.contains("open")?"▾":"▸")+" DID · nasłuch · skan modułów · odkrywanie · dziennik"};
+labOdtworz();
+$("#pendingPush").onclick=()=>pushPending(true);
+$("#pendingHide").onclick=()=>{$("#pending").hidden=true};
+$("#pendingToggle").onclick=async e=>{const l=$("#pendingList");l.hidden=!l.hidden;
+  e.target.textContent=l.hidden?"Pokaż listę":"Ukryj listę";
+  if(!l.hidden)await renderPendingList()};
+$("#connStart").onclick=()=>{if(!connected)connect()};
+$("#connClose").onclick=zamknijPanelPolaczenia;
+$("#confirmYes").onclick=()=>zamknijPotwierdzenie(true);
+$("#confirmNo").onclick=()=>zamknijPotwierdzenie(false);
+/* Ostrzeżenie przed przypadkowym odświeżeniem. Przeglądarka pokazuje własne okienko —
+   my decydujemy tylko, kiedy ma się pojawić: gdy w pamięci są dane, których nikt nie wysłał. */
+window.addEventListener("beforeunload",e=>{
+  if(monitoring||((sessionSampleCount>0||sessionExchangeCount>0)&&!sessionPushed)){e.preventDefault();e.returnValue=""}
+});
+/* Zejście na drugi plan (przełączenie apki, zgaszenie ekranu) to najczęstszy moment,
+   po którym telefon potrafi ubić kartę — domykamy wtedy zapisy i odświeżamy dziennik. */
+document.addEventListener("visibilitychange",()=>{if(document.hidden){flushWrites(1500);touchSession()}});
+loadVin();showVin();renderService();
+
+dbOpen().then(async ok=>{newSession();event("INFO",`XC70 Data Console ${APP_VERSION}. ${ok?"RAW-first aktywny":"IndexedDB niedostępny"}. Brak pola dowolnych komend; każda transmisja przechodzi allowlistę.`);if(!navigator.bluetooth)event("ERROR","Web Bluetooth niedostępny — użyj zgodnej przeglądarki i HTTPS");
+  /* Zanim cokolwiek zaczniemy mierzyć: sprawdź, czy poprzednie otwarcie czegoś nie zostawiło. */
+  if(ok){try{await recoverOnStart()}catch(err){event("ERROR","ODZYSK_NIEUDANY",{powod:String(err&&err.message||err)})}}});
+</script>
+</body>
+</html>
